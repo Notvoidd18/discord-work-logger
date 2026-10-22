@@ -1,0 +1,36 @@
+{
+  "name": "discord-work-logger",
+  "version": "1.0.0",
+  "description": "Production-ready Discord Work Logging bot built with TypeScript, discord.js, and PostgreSQL",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "db:migrate": "ts-node src/database/migrate.ts"
+  },
+  "keywords": [
+    "discord",
+    "discordjs",
+    "typescript",
+    "postgresql",
+    "work-log",
+    "render"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/pg": "^8.11.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
