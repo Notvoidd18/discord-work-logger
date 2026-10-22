@@ -6,6 +6,7 @@ import { testDatabaseConnection, pool } from './database/pool';
 import { initializeDatabaseSchema } from './database/schema';
 import { handleReady } from './events/ready';
 import { handleMessageCreate } from './events/messageCreate';
+import { handleInteractionCreate } from './events/interactionCreate';
 
 // 1. Initialize Discord Client with necessary gateway intents
 const client = new Client({
@@ -17,12 +18,16 @@ const client = new Client({
 });
 
 // 2. Register Discord Event Listeners
-client.once('ready', () => {
-  handleReady(client);
+client.once('ready', async () => {
+  await handleReady(client);
 });
 
 client.on('messageCreate', async (message) => {
   await handleMessageCreate(client, message);
+});
+
+client.on('interactionCreate', async (interaction) => {
+  await handleInteractionCreate(interaction);
 });
 
 // 3. Lightweight HTTP server for Render Web Service health checks (optional)

@@ -69,19 +69,33 @@ export class WorkLogRepository {
   }
 
   /**
-   * Fetch recent work logs for a guild (for future !logs command)
+   * Fetch recent work logs for a guild (for !logs / /listlog command)
    */
-  public async getRecentLogs(guildId: string, limit: number = 10): Promise<WorkLog[]> {
+  public async getRecentLogs(guildId: string, limit: number = 25): Promise<WorkLog[]> {
     const query = `
       SELECT id, guild_id, channel_id, user_id, username, description, created_at
       FROM work_logs
       WHERE guild_id = $1
-      ORDER BY created_at DESC
+      ORDER BY id ASC
       LIMIT $2;
     `;
 
     const result = await pool.query<WorkLogRow>(query, [guildId, limit]);
     return result.rows.map(mapRowToWorkLog);
+  }
+
+  /**
+   * Get total count of logs for a guild
+   */
+  public async getTotalLogCount(guildId: string): Promise<number> {
+    const query = `
+      SELECT COUNT(*) AS total
+      FROM work_logs
+      WHERE guild_id = $1;
+    `;
+
+    const result = await pool.query<{ total: string }>(query, [guildId]);
+    return parseInt(result.rows[0]?.total || '0', 10);
   }
 
   /**

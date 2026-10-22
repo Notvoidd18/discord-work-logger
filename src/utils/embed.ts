@@ -54,6 +54,41 @@ export function createWorkLogSavedEmbed(log: WorkLog, authorUser?: User): EmbedB
 }
 
 /**
+ * Creates an embed displaying all work logs in the requested one-click format:
+ * Log#0001 "context" by (username)
+ */
+export function createLogListEmbed(logs: WorkLog[], totalCount: number): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(BrandColors.INFO)
+    .setTitle('📋 Staff Work Logs')
+    .setTimestamp();
+
+  if (logs.length === 0) {
+    embed.setDescription(
+      'No work logs recorded in this server yet.\nUse `!log <description>` to add one.'
+    );
+    return embed;
+  }
+
+  const lines = logs.map((log) => {
+    const formattedId = log.id.padStart(4, '0');
+    return `Log#${formattedId} "${log.description}" by (${log.username})`;
+  });
+
+  let content = lines.join('\n');
+  if (content.length > 4000) {
+    content = content.slice(0, 3950) + '\n... (truncated)';
+  }
+
+  embed.setDescription(content);
+  embed.setFooter({
+    text: `Total logs: ${totalCount} • Showing ${logs.length}`,
+  });
+
+  return embed;
+}
+
+/**
  * Creates an error embed for validation or permission failures
  */
 export function createErrorEmbed(title: string, message: string): EmbedBuilder {

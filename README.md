@@ -6,7 +6,9 @@ A robust, production-ready Discord Work Logging bot built with **Node.js**, **Ty
 
 ## 📌 Features
 
-- **Staff Work Logging (`!log <description>`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
+- **Staff Work Logging (`!log <description>` or `/log`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
+- **One-Click Log Listing (`/listlog` or `!listlog`)**: Displays all recorded logs in the format: `Log#0001 "context" by (username)`.
+- **Custom Activity Presence**: Displays `Playing Workin ` with clean online status.
 - **Detailed Audit Trail**: Stores unique Log ID, Discord User ID, username tag, work description, UTC timestamp, Guild ID, and Channel ID.
 - **Strict Role & Administrator Authorization**: Restricts command execution to server Administrators or roles specified in `AUTHORIZED_ROLE_IDS`. Unauthorized users are securely rejected.
 - **Input Validation & Error Handling**: Validates empty input and length limits. Never claims an entry was saved if the database operation fails.
@@ -39,10 +41,12 @@ A robust, production-ready Discord Work Logging bot built with **Node.js**, **Ty
     ├── commands/
     │   ├── types.ts                 # Command interface and execution context
     │   ├── registry.ts              # Command loader and dispatcher
-    │   └── log.ts                   # !log command implementation
+    │   ├── log.ts                   # !log command implementation
+    │   └── listlog.ts               # !listlog command implementation
     ├── events/
     │   ├── ready.ts                 # Client ready event handler & activity status
-    │   └── messageCreate.ts         # Message dispatcher with authorization checks
+    │   ├── messageCreate.ts         # Message dispatcher with authorization checks
+    │   └── interactionCreate.ts     # Slash command handler (/listlog, /log)
     ├── utils/
     │   ├── embed.ts                 # Embed builders for confirmations and errors
     │   ├── logger.ts                # Timestamped application logger

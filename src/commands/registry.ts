@@ -1,6 +1,7 @@
 import { Collection } from 'discord.js';
 import { Command } from './types';
 import { logCommand } from './log';
+import { listLogCommand } from './listlog';
 import { logger } from '../utils/logger';
 
 export class CommandRegistry {
@@ -44,3 +45,4 @@ export const registry = new CommandRegistry();
 
 // Initialize all enabled commands
 registry.register(logCommand);
+registry.register(listLogCommand);
