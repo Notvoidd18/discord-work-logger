@@ -80,21 +80,27 @@ export const logCommand: Command = {
         try {
           const dedicatedChannel = await message.guild.channels.fetch(dedicatedChannelId);
           if (dedicatedChannel && dedicatedChannel.isTextBased()) {
+            // Post the permanent log embed in the dedicated channel
             await dedicatedChannel.send({ embeds: [logEmbed] });
 
-            // If the command was sent in a different channel, confirm to user with link to dedicated channel
-            if (message.channel.id !== dedicatedChannelId) {
-              await message.reply({
+            // Delete the user's !log message to keep current chat completely clean
+            await message.delete().catch(() => null);
+
+            // If the command was sent in a different channel, send a temporary notice that auto-deletes after 5 seconds
+            if (message.channel.id !== dedicatedChannelId && 'send' in message.channel) {
+              const notice = await message.channel.send({
                 embeds: [
                   createSuccessEmbed(
                     'Work Log Recorded',
-                    `Your log \`${formatLogId(savedLog.id)}\` has been saved and posted to <#${dedicatedChannelId}>.`
+                    `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`
                   ),
                 ],
               });
+              setTimeout(() => {
+                notice.delete().catch(() => null);
+              }, 5000);
               return;
             } else {
-              // Already sent in the dedicated channel, nothing more needed
               return;
             }
           }

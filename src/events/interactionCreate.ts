@@ -49,7 +49,7 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
 
   const { commandName } = interaction;
 
-  // 1. Handle /listlog
+  // 1. Handle /listlog (ephemeral so only the staff member sees the logs)
   if (commandName === 'listlog') {
     try {
       const [logs, totalCount] = await Promise.all([
@@ -58,7 +58,7 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
       ]);
 
       const embed = createLogListEmbed(logs, totalCount);
-      await interaction.reply({ embeds: [embed] });
+      await interaction.reply({ embeds: [embed], ephemeral: true });
     } catch (error) {
       logger.error('Failed to handle /listlog interaction:', error);
       await interaction.reply({
@@ -74,7 +74,7 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
     return;
   }
 
-  // 2. Handle /channellog
+  // 2. Handle /channellog (ephemeral: only visible to the user configuring it)
   if (commandName === 'channellog') {
     const subcommand = interaction.options.getSubcommand();
 
@@ -111,6 +111,7 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
               `All future staff work logs will now be posted in <#${targetChannel.id}>!`
             ),
           ],
+          ephemeral: true,
         });
       } catch (error) {
         logger.error('Failed to set dedicated log channel:', error);
@@ -235,22 +236,24 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
       if (dedicatedChannelId) {
         const dedicatedChannel = await interaction.guild.channels.fetch(dedicatedChannelId).catch(() => null);
         if (dedicatedChannel && dedicatedChannel.isTextBased()) {
+          // Send the full embed into the dedicated log channel
           await dedicatedChannel.send({ embeds: [logEmbed] });
 
-          if (interaction.channelId !== dedicatedChannelId) {
-            await interaction.reply({
-              embeds: [
-                createSuccessEmbed(
-                  'Work Log Saved',
-                  `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`
-                ),
-              ],
-            });
-            return;
-          }
+          // Reply only to the user who ran the command (ephemeral message)
+          await interaction.reply({
+            embeds: [
+              createSuccessEmbed(
+                'Work Log Saved',
+                `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`
+              ),
+            ],
+            ephemeral: true,
+          });
+          return;
         }
       }
 
+      // If no dedicated channel, reply in current channel
       await interaction.reply({ embeds: [logEmbed] });
     } catch (error) {
       logger.error('Failed to handle /log interaction:', error);

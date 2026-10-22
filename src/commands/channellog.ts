@@ -28,25 +28,20 @@ export const channelLogCommand: Command = {
     // 1. View current log channel
     if (subAction === 'view') {
       const currentChannelId = await guildSettingsRepository.getLogChannel(message.guild.id);
-      if (currentChannelId) {
-        await message.reply({
-          embeds: [
-            createSuccessEmbed(
-              'Dedicated Log Channel',
-              `Work logs are currently configured to be posted in <#${currentChannelId}>.`
-            ),
-          ],
-        });
-      } else {
-        await message.reply({
-          embeds: [
-            createSuccessEmbed(
-              'Dedicated Log Channel',
-              `No dedicated log channel is configured. Work logs are posted in whichever channel the \`${config.commandPrefix}log\` command is run.\n\nUse \`${config.commandPrefix}channellog set #channel\` or \`/channellog set\` to assign one.`
-            ),
-          ],
-        });
-      }
+      const replyMsg = await message.reply({
+        embeds: [
+          currentChannelId
+            ? createSuccessEmbed(
+                'Dedicated Log Channel',
+                `Work logs are currently configured to be posted in <#${currentChannelId}>.`
+              )
+            : createSuccessEmbed(
+                'Dedicated Log Channel',
+                `No dedicated log channel is configured. Work logs are posted in whichever channel the \`${config.commandPrefix}log\` command is run.\n\nUse \`${config.commandPrefix}channellog set #channel\` or \`/channellog set\` to assign one.`
+              ),
+        ],
+      });
+      setTimeout(() => replyMsg.delete().catch(() => null), 10000);
       return;
     }
 
@@ -54,14 +49,19 @@ export const channelLogCommand: Command = {
     if (subAction === 'reset' || subAction === 'remove' || subAction === 'clear') {
       await guildSettingsRepository.removeLogChannel(message.guild.id);
       logger.info(`Dedicated log channel reset for guild ${message.guild.id}`);
-      await message.reply({
-        embeds: [
-          createSuccessEmbed(
-            'Channel Reset',
-            `Dedicated log channel has been removed. Work logs will now appear in the channel where \`${config.commandPrefix}log\` is typed.`
-          ),
-        ],
-      });
+      await message.delete().catch(() => null);
+
+      if ('send' in message.channel) {
+        const replyMsg = await message.channel.send({
+          embeds: [
+            createSuccessEmbed(
+              'Channel Reset',
+              `Dedicated log channel has been removed. Work logs will now appear in the channel where \`${config.commandPrefix}log\` is typed.`
+            ),
+          ],
+        });
+        setTimeout(() => replyMsg.delete().catch(() => null), 5000);
+      }
       return;
     }
 
@@ -98,14 +98,20 @@ export const channelLogCommand: Command = {
       await guildSettingsRepository.setLogChannel(message.guild.id, targetChannel.id);
       logger.info(`Dedicated log channel for guild ${message.guild.id} set to ${targetChannel.id}`);
 
-      await message.reply({
-        embeds: [
-          createSuccessEmbed(
-            'Dedicated Log Channel Set',
-            `All future staff work logs will now be posted in <#${targetChannel.id}>!`
-          ),
-        ],
-      });
+      // Delete the command message to keep channel clean
+      await message.delete().catch(() => null);
+
+      if ('send' in message.channel) {
+        const replyMsg = await message.channel.send({
+          embeds: [
+            createSuccessEmbed(
+              'Dedicated Log Channel Set',
+              `All future staff work logs will now be posted in <#${targetChannel.id}>!`
+            ),
+          ],
+        });
+        setTimeout(() => replyMsg.delete().catch(() => null), 5000);
+      }
       return;
     }
 
