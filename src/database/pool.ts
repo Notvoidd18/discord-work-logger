@@ -27,7 +27,7 @@ function createPoolConfig(): PoolConfig {
 
 export const pool = new Pool(createPoolConfig());
 
-pool.on('error', (err) => {
+pool.on('error', (err: Error) => {
   logger.error('Unexpected PostgreSQL client error on idle client:', err);
 });
 
