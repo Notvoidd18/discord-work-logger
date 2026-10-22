@@ -17,24 +17,27 @@ export async function handleReady(client: Client): Promise<void> {
     ],
   });
 
-  // 2. Register Slash Commands
-  // Register per-guild FIRST so they appear INSTANTLY in the Discord client (0 delay)
+  // 2. Clear all guild-level commands to completely remove duplicate command entries
+  // (Duplicates happen when Discord has the same command registered both globally AND per-guild)
   const guilds = await client.guilds.fetch();
   for (const [guildId, oauthGuild] of guilds) {
     try {
       const fullGuild = await oauthGuild.fetch();
-      await fullGuild.commands.set(slashCommands);
-      logger.info(`Instant slash command registration succeeded for guild "${fullGuild.name}" (${guildId})`);
+      const existingGuildCommands = await fullGuild.commands.fetch();
+      if (existingGuildCommands.size > 0) {
+        await fullGuild.commands.set([]);
+        logger.info(`Cleared ${existingGuildCommands.size} duplicate guild command(s) for "${fullGuild.name}" (${guildId})`);
+      }
     } catch (guildErr) {
-      logger.warn(`Could not set guild slash commands for "${oauthGuild.name}" (${guildId}):`, guildErr);
+      logger.warn(`Could not clear guild commands for "${oauthGuild.name}":`, guildErr);
     }
   }
 
-  // Also register globally for long-term sync
+  // 3. Register official slash commands GLOBALLY ONLY (single source of truth, 0 duplicates)
   try {
     if (client.application) {
       await client.application.commands.set(slashCommands);
-      logger.info('Global slash commands registered successfully.');
+      logger.info(`Registered ${slashCommands.length} official slash commands globally (/log, /listlog, /channellog).`);
     }
   } catch (err) {
     logger.error('Failed to register global slash commands:', err);

@@ -7,6 +7,7 @@ import {
   createSuccessEmbed,
   createErrorEmbed,
 } from '../utils/embed';
+import { formatLogId } from '../types/workLog';
 import { isAuthorizedUser } from '../utils/permissions';
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
@@ -189,15 +190,29 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
     }
   }
 
-  // 3. Fallback for old cached /log command
+  // 3. Handle /log
   if (commandName === 'log') {
-    const description = interaction.options.getString('description', false)?.trim();
+    const description = interaction.options.getString('description', true).trim();
+
     if (!description) {
       await interaction.reply({
         embeds: [
-          createSuccessEmbed(
-            'Use !log command',
-            `Work logs are recorded using:\n\`${config.commandPrefix}log <work description>\`\n\nExample:\n\`${config.commandPrefix}log Tested website order system\``
+          createErrorEmbed(
+            'Missing Description',
+            'You must provide a description of the work performed.'
+          ),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (description.length > config.maxLogLength) {
+      await interaction.reply({
+        embeds: [
+          createErrorEmbed(
+            'Description Too Long',
+            `Your description is **${description.length}** characters, exceeding the limit of **${config.maxLogLength}**.`
           ),
         ],
         ephemeral: true,
@@ -221,16 +236,18 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
         const dedicatedChannel = await interaction.guild.channels.fetch(dedicatedChannelId).catch(() => null);
         if (dedicatedChannel && dedicatedChannel.isTextBased()) {
           await dedicatedChannel.send({ embeds: [logEmbed] });
-          await interaction.reply({
-            embeds: [
-              createSuccessEmbed(
-                'Work Log Saved',
-                `Your log has been recorded and posted to <#${dedicatedChannelId}>.`
-              ),
-            ],
-            ephemeral: true,
-          });
-          return;
+
+          if (interaction.channelId !== dedicatedChannelId) {
+            await interaction.reply({
+              embeds: [
+                createSuccessEmbed(
+                  'Work Log Saved',
+                  `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`
+                ),
+              ],
+            });
+            return;
+          }
         }
       }
 
@@ -239,7 +256,10 @@ export async function handleInteractionCreate(interaction: Interaction): Promise
       logger.error('Failed to handle /log interaction:', error);
       await interaction.reply({
         embeds: [
-          createErrorEmbed('Database Error', 'Could not save work log.'),
+          createErrorEmbed(
+            'Database Error',
+            'An error occurred while saving your work log. The entry was not saved.'
+          ),
         ],
         ephemeral: true,
       });

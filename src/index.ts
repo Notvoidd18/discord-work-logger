@@ -23,13 +23,8 @@ client.once('ready', async () => {
   await handleReady(client);
 });
 
-client.on('guildCreate', async (guild) => {
-  try {
-    await guild.commands.set(slashCommands);
-    logger.info(`Instantly registered slash commands for newly joined guild "${guild.name}" (${guild.id})`);
-  } catch (err) {
-    logger.warn(`Failed to set slash commands for joined guild "${guild.name}":`, err);
-  }
+client.on('messageCreate', async (message) => {
+  await handleMessageCreate(client, message);
 });
 
 client.on('interactionCreate', async (interaction) => {
