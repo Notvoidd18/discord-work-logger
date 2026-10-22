@@ -21,6 +21,12 @@ export async function initializeDatabaseSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_work_logs_user_id ON work_logs (user_id);
     CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs (created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_work_logs_guild_user ON work_logs (guild_id, user_id);
+
+    CREATE TABLE IF NOT EXISTS guild_settings (
+      guild_id VARCHAR(32) PRIMARY KEY,
+      log_channel_id VARCHAR(32),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'UTC') NOT NULL
+    );
   `;
 
   const client = await pool.connect();

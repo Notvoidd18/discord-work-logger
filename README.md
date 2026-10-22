@@ -6,7 +6,8 @@ A robust, production-ready Discord Work Logging bot built with **Node.js**, **Ty
 
 ## 📌 Features
 
-- **Staff Work Logging (`!log <description>` or `/log`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
+- **Staff Work Logging (`!log <description>`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
+- **Dedicated Log Channel (`/channellog set` or `!channellog set #channel`)**: Configure a designated channel where all work logs are automatically delivered in real time.
 - **One-Click Log Listing (`/listlog` or `!listlog`)**: Displays all recorded logs in the format: `Log#0001 "context" by (username)`.
 - **Custom Activity Presence**: Displays `Playing Workin ` with clean online status.
 - **Detailed Audit Trail**: Stores unique Log ID, Discord User ID, username tag, work description, UTC timestamp, Guild ID, and Channel ID.
@@ -37,16 +38,19 @@ A robust, production-ready Discord Work Logging bot built with **Node.js**, **Ty
     │   ├── schema.ts                # Auto-migration runner on startup
     │   ├── migrate.ts               # Standalone migration script (`npm run db:migrate`)
     │   └── repositories/
-    │       └── workLogRepository.ts # Work log database query methods
+    │       ├── workLogRepository.ts       # Work log database query methods
+    │       └── guildSettingsRepository.ts # Dedicated channel settings methods
     ├── commands/
     │   ├── types.ts                 # Command interface and execution context
     │   ├── registry.ts              # Command loader and dispatcher
     │   ├── log.ts                   # !log command implementation
-    │   └── listlog.ts               # !listlog command implementation
+    │   ├── listlog.ts               # !listlog command implementation
+    │   ├── channellog.ts            # !channellog command implementation
+    │   └── slashDefinitions.ts     # Official slash command schemas
     ├── events/
     │   ├── ready.ts                 # Client ready event handler & activity status
     │   ├── messageCreate.ts         # Message dispatcher with authorization checks
-    │   └── interactionCreate.ts     # Slash command handler (/listlog, /log)
+    │   └── interactionCreate.ts     # Slash command handler (/listlog, /channellog)
     ├── utils/
     │   ├── embed.ts                 # Embed builders for confirmations and errors
     │   ├── logger.ts                # Timestamped application logger

@@ -1,6 +1,12 @@
 import { Command, CommandContext } from './types';
 import { workLogRepository } from '../database/repositories/workLogRepository';
-import { createWorkLogSavedEmbed, createErrorEmbed } from '../utils/embed';
+import { guildSettingsRepository } from '../database/repositories/guildSettingsRepository';
+import {
+  createWorkLogSavedEmbed,
+  createSuccessEmbed,
+  createErrorEmbed,
+} from '../utils/embed';
+import { formatLogId } from '../types/workLog';
 import { config } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -65,8 +71,41 @@ export const logCommand: Command = {
       );
 
       // 5. Send confirmation embed
-      const embed = createWorkLogSavedEmbed(savedLog, message.author);
-      await message.reply({ embeds: [embed] });
+      const logEmbed = createWorkLogSavedEmbed(savedLog, message.author);
+
+      // Check if guild has a dedicated logging channel configured
+      const dedicatedChannelId = await guildSettingsRepository.getLogChannel(message.guild.id);
+
+      if (dedicatedChannelId) {
+        try {
+          const dedicatedChannel = await message.guild.channels.fetch(dedicatedChannelId);
+          if (dedicatedChannel && dedicatedChannel.isTextBased()) {
+            await dedicatedChannel.send({ embeds: [logEmbed] });
+
+            // If the command was sent in a different channel, confirm to user with link to dedicated channel
+            if (message.channel.id !== dedicatedChannelId) {
+              await message.reply({
+                embeds: [
+                  createSuccessEmbed(
+                    'Work Log Recorded',
+                    `Your log \`${formatLogId(savedLog.id)}\` has been saved and posted to <#${dedicatedChannelId}>.`
+                  ),
+                ],
+              });
+              return;
+            } else {
+              // Already sent in the dedicated channel, nothing more needed
+              return;
+            }
+          }
+        } catch (channelErr) {
+          logger.warn(`Could not send log to dedicated channel ${dedicatedChannelId}:`, channelErr);
+          // Fall back to sending in the current channel below
+        }
+      }
+
+      // Default: reply in the same channel
+      await message.reply({ embeds: [logEmbed] });
     } catch (error) {
       logger.error('Failed to save work log to database:', error);
 

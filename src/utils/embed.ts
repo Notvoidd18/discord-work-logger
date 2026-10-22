@@ -89,6 +89,17 @@ export function createLogListEmbed(logs: WorkLog[], totalCount: number): EmbedBu
 }
 
 /**
+ * Creates a generic success embed
+ */
+export function createSuccessEmbed(title: string, message: string): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(BrandColors.SUCCESS)
+    .setTitle(`✅ ${title}`)
+    .setDescription(message)
+    .setTimestamp();
+}
+
+/**
  * Creates an error embed for validation or permission failures
  */
 export function createErrorEmbed(title: string, message: string): EmbedBuilder {
