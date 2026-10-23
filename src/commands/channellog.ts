@@ -10,8 +10,8 @@ export const channelLogCommand: Command = {
   usage: `${config.commandPrefix}channellog set <#channel> | view | reset`,
   aliases: ['logchannel', 'setlogchannel'],
   adminOrStaffOnly: true,
-  targetBotIds: ['manager'],
-  execute: async ({ message, args, watermark }: CommandContext): Promise<void> => {
+  targetBotIds: ['main', 'bot_a'],
+  execute: async ({ message, args, botId, watermark }: CommandContext): Promise<void> => {
     if (!message.guild) {
       await message.reply({
         embeds: [
@@ -52,7 +52,7 @@ export const channelLogCommand: Command = {
     // 2. Reset log channel
     if (subAction === 'reset' || subAction === 'remove' || subAction === 'clear') {
       await guildSettingsRepository.removeLogChannel(message.guild.id);
-      logger.forBot('manager').info(`Dedicated log channel reset for guild ${message.guild.id}`);
+      logger.forBot(botId).info(`Dedicated log channel reset for guild ${message.guild.id}`);
       await message.delete().catch(() => null);
 
       if ('send' in message.channel) {
@@ -103,7 +103,7 @@ export const channelLogCommand: Command = {
       }
 
       await guildSettingsRepository.setLogChannel(message.guild.id, targetChannel.id);
-      logger.forBot('manager').info(`Dedicated log channel for guild ${message.guild.id} set to ${targetChannel.id}`);
+      logger.forBot(botId).info(`Dedicated log channel for guild ${message.guild.id} set to ${targetChannel.id}`);
 
       // Delete the command message to keep channel clean
       await message.delete().catch(() => null);

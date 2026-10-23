@@ -3,9 +3,6 @@ import { Command } from './types';
 import { logCommand } from './log';
 import { listLogCommand } from './listlog';
 import { channelLogCommand } from './channellog';
-import { orderCommand } from './orders/order';
-import { ordersListCommand } from './orders/ordersList';
-import { orderStatusCommand } from './orders/orderStatus';
 import { logger } from '../utils/logger';
 
 export class CentralCommandRegistry {
@@ -51,7 +48,6 @@ export class CentralCommandRegistry {
     // Check bot restriction
     if (command.targetBotIds && command.targetBotIds.length > 0) {
       if (!command.targetBotIds.includes(botId)) {
-        // Command does not belong to this bot
         return undefined;
       }
     }
@@ -76,12 +72,7 @@ export class CentralCommandRegistry {
 
 export const registry = new CentralCommandRegistry();
 
-// 1. Manager Bot Commands
+// Official platform commands (assigned to 'main' and 'bot_a')
 registry.register(logCommand);
 registry.register(listLogCommand);
 registry.register(channelLogCommand);
-
-// 2. Orders Bot Commands
-registry.register(orderCommand);
-registry.register(ordersListCommand);
-registry.register(orderStatusCommand);

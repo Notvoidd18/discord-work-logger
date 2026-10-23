@@ -16,32 +16,36 @@ export class BotManager {
    * Registers baseline bots configured in the platform
    */
   private registerDefaultBots(): void {
-    // Bot 1: Manager (Existing Staff Work Logger & Settings)
+    // 1. Bot Main (Official Bot)
+    // Variable on Render: BOT_TOKEN_MAIN (with DISCORD_TOKEN fallback for backward compatibility)
+    // Status: "Hosting on Ongrywolf"
     this.registerBot({
-      id: 'manager',
-      displayName: 'Ongrywolf Manager',
-      tokenEnvVar: 'BOT_MANAGER_TOKEN',
-      fallbackTokenEnvVar: 'DISCORD_TOKEN', // Full backward compatibility with existing Render deploy
-      clientIdEnvVar: 'BOT_MANAGER_CLIENT_ID',
+      id: 'main',
+      displayName: 'Ongrywolf Main',
+      tokenEnvVar: 'BOT_TOKEN_MAIN',
+      fallbackTokenEnvVar: 'DISCORD_TOKEN', // Preserves currently deployed Render bot!
+      clientIdEnvVar: 'BOT_CLIENT_ID_MAIN',
       fallbackClientIdEnvVar: 'DISCORD_CLIENT_ID',
       defaultPrefix: '!',
-      defaultStatusText: 'Hosting on Ongrywolf PRV',
+      defaultStatusText: 'Hosting on Ongrywolf',
       defaultStatusType: ActivityType.Custom,
       brandWatermark: 'Hosting on Ongrywolf',
       defaultCommands: ['log', 'listlog', 'channellog'],
     });
 
-    // Bot 2: Orders (Customer & Staff Orders Platform)
+    // 2. Bot A
+    // Variable on Render: BOT_TOKEN_A
+    // Status: "Hosting on Ongrywolf PRV"
     this.registerBot({
-      id: 'orders',
-      displayName: 'Ongrywolf Orders',
-      tokenEnvVar: 'BOT_ORDERS_TOKEN',
-      clientIdEnvVar: 'BOT_ORDERS_CLIENT_ID',
+      id: 'bot_a',
+      displayName: 'Ongrywolf Bot A',
+      tokenEnvVar: 'BOT_TOKEN_A',
+      clientIdEnvVar: 'BOT_CLIENT_ID_A',
       defaultPrefix: '!',
-      defaultStatusText: 'Hosting on Ongrywolf',
+      defaultStatusText: 'Hosting on Ongrywolf PRV',
       defaultStatusType: ActivityType.Custom,
       brandWatermark: 'Hosting on Ongrywolf',
-      defaultCommands: ['order', 'orders', 'orderstatus'],
+      defaultCommands: ['log', 'listlog', 'channellog'],
     });
   }
 

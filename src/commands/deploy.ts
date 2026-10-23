@@ -32,12 +32,14 @@ async function deployForBot(botId: string, tokenVar: string, fallbackTokenVar?: 
 async function main() {
   const targetBot = process.argv[2]?.toLowerCase();
 
-  if (!targetBot || targetBot === 'manager') {
-    await deployForBot('manager', 'BOT_MANAGER_TOKEN', 'DISCORD_TOKEN', 'BOT_MANAGER_CLIENT_ID', 'DISCORD_CLIENT_ID');
+  // 1. Bot Main (Official Bot)
+  if (!targetBot || targetBot === 'main') {
+    await deployForBot('main', 'BOT_TOKEN_MAIN', 'DISCORD_TOKEN', 'BOT_CLIENT_ID_MAIN', 'DISCORD_CLIENT_ID');
   }
 
-  if (!targetBot || targetBot === 'orders') {
-    await deployForBot('orders', 'BOT_ORDERS_TOKEN', undefined, 'BOT_ORDERS_CLIENT_ID', undefined);
+  // 2. Bot A
+  if (!targetBot || targetBot === 'bot_a' || targetBot === 'a') {
+    await deployForBot('bot_a', 'BOT_TOKEN_A', undefined, 'BOT_CLIENT_ID_A', undefined);
   }
 }
 

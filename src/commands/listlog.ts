@@ -9,8 +9,8 @@ export const listLogCommand: Command = {
   usage: '!listlog',
   aliases: ['logs', 'listlogs'],
   adminOrStaffOnly: true,
-  targetBotIds: ['manager'],
-  execute: async ({ message, watermark }: CommandContext): Promise<void> => {
+  targetBotIds: ['main', 'bot_a'],
+  execute: async ({ message, botId, watermark }: CommandContext): Promise<void> => {
     if (!message.guild) {
       await message.reply({
         embeds: [
@@ -33,7 +33,7 @@ export const listLogCommand: Command = {
       const embed = createLogListEmbed(logs, totalCount, watermark);
       await message.reply({ embeds: [embed] });
     } catch (error) {
-      logger.forBot('manager').error('Failed to retrieve work logs:', error);
+      logger.forBot(botId).error('Failed to retrieve work logs:', error);
       await message.reply({
         embeds: [
           createErrorEmbed(

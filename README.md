@@ -4,16 +4,19 @@ A modular, enterprise-grade multi-bot Discord architecture built with **Node.js*
 
 ---
 
-## 📌 1. Architecture Overview
+## 📌 1. Platform Overview & Bots
 
-The **Ongrywolf Multi-Bot Platform** runs multiple independent Discord bots concurrently within a single lightweight Node.js service without code duplication:
+The platform runs two independent Discord bots concurrently inside a single Render web service:
 
-- **Bot 1: Ongrywolf Manager (`manager`)**: Handles staff work logging, audit trail tracking, and dedicated log channel configuration. Preserves existing bot behavior and permissions.
-- **Bot 2: Ongrywolf Orders (`orders`)**: Dedicated customer and staff order processing, order status transitions, and order listing.
-- **Brand Watermark**: Subtly brands public-facing embeds and activity presence with `Hosting on Ongrywolf`.
-- **Command Segregation**: Commands are assigned to specific bot IDs in a centralized registry. Bot 1 processes only manager commands, and Bot 2 processes only order commands.
-- **State Persistence**: PostgreSQL stores desired states, observed gateway states, status texts, assigned commands, error logs, and timestamps.
-- **Dashboard Ready**: Features `IBotManagementDashboardService` and a JSON status endpoint ready for future web dashboard integration.
+| Bot Name | Bot ID | Environment Variable on Render | Custom Status Text | Assigned Commands |
+| :--- | :--- | :--- | :--- | :--- |
+| **Ongrywolf Main (Official)** | `main` | `BOT_TOKEN_MAIN` *(fallback: `DISCORD_TOKEN`)* | `Hosting on Ongrywolf` | `/log`, `/listlog`, `/channellog` *(+ prefix `!` alternatives)* |
+| **Ongrywolf Bot A** | `bot_a` | `BOT_TOKEN_A` | `Hosting on Ongrywolf PRV` | `/log`, `/listlog`, `/channellog` *(+ prefix `!` alternatives)* |
+
+- **Official Commands Only**: Contains exclusively the official requested logging commands (`log`, `listlog`, `channellog`). No extra or unrequested commands are added.
+- **Brand Watermark**: Subtly brands public-facing embeds with `Hosting on Ongrywolf`.
+- **Fault-Tolerant Isolation**: Each bot runs its own Discord `Client` instance. If one bot disconnects or encounters an error, the other continues running uninterrupted.
+- **Render Backward-Compatibility**: `BOT_TOKEN_MAIN` automatically falls back to your existing `DISCORD_TOKEN`, meaning your existing bot will continue operating with zero downtime or breaking changes.
 
 ---
 
@@ -45,20 +48,15 @@ The **Ongrywolf Multi-Bot Platform** runs multiple independent Discord bots conc
     │   └── repositories/
     │       ├── botConfigRepository.ts         # Persistent bot state & configuration queries
     │       ├── workLogRepository.ts           # Staff work logs persistence
-    │       ├── guildSettingsRepository.ts     # Dedicated log channel settings
-    │       └── orderRepository.ts             # Orders system persistence
+    │       └── guildSettingsRepository.ts     # Dedicated log channel settings
     ├── commands/
     │   ├── types.ts                           # Command interface & CommandContext
-    │   ├── registry.ts                        # Central command registry with bot scoping
-    │   ├── slashDefinitions.ts                # Slash command definitions per bot
+    │   ├── registry.ts                        # Central command registry
+    │   ├── slashDefinitions.ts                # Official slash command schemas
     │   ├── deploy.ts                          # Slash deployment CLI (`npm run deploy:commands`)
-    │   ├── log.ts                             # Bot 1: !log command
-    │   ├── listlog.ts                         # Bot 1: !listlog command
-    │   ├── channellog.ts                      # Bot 1: !channellog command
-    │   └── orders/
-    │       ├── order.ts                       # Bot 2: !order command
-    │       ├── ordersList.ts                  # Bot 2: !orders command
-    │       └── orderStatus.ts                 # Bot 2: !orderstatus command
+    │   ├── log.ts                             # !log command
+    │   ├── listlog.ts                         # !listlog command
+    │   └── channellog.ts                      # !channellog command
     ├── events/
     │   ├── ready.ts                           # Bot-specific ready handler & slash sync
     │   ├── messageCreate.ts                   # Prefix command dispatcher scoped per bot
@@ -68,26 +66,13 @@ The **Ongrywolf Multi-Bot Platform** runs multiple independent Discord bots conc
     │   ├── logger.ts                          # Contextual logger with per-bot prefixes
     │   └── permissions.ts                     # Administrator & Role permission validator
     └── types/
-        ├── workLog.ts                         # WorkLog entity and ID formatter
-        └── order.ts                           # Order entity and ID formatter
+        └── workLog.ts                         # WorkLog entity and ID formatter
 ```
 
 ---
 
-## 🗄️ 3. Database Schema
+## 🤖 3. Official Commands
 
-The database tables are automatically verified and created on startup:
-
-1. **`work_logs`**: Permanent record of staff work activities.
-2. **`guild_settings`**: Guild-specific settings (e.g. dedicated log channel ID).
-3. **`bot_configurations`**: Persistent bot configurations, desired states, observed states, status texts, and error summaries.
-4. **`orders`**: Customer and staff orders, status tracking (`PENDING`, `PROCESSING`, `COMPLETED`, `CANCELLED`).
-
----
-
-## 🤖 4. Bot Command Assignments
-
-### Bot 1: Ongrywolf Manager (`manager`)
 | Slash Command | Prefix Alternative | Purpose | Permissions |
 | :--- | :--- | :--- | :--- |
 | `/log <description>` | `!log <description>` | Record staff work log into PostgreSQL | Admin / Authorized Staff Roles |
@@ -96,98 +81,74 @@ The database tables are automatically verified and created on startup:
 | `/channellog view` | `!channellog view` | View currently configured log channel | Admin / Authorized Staff Roles |
 | `/channellog reset` | `!channellog reset` | Reset back to current channel | Admin / Authorized Staff Roles |
 
-### Bot 2: Ongrywolf Orders (`orders`)
-| Slash Command | Prefix Alternative | Purpose | Permissions |
-| :--- | :--- | :--- | :--- |
-| `/order <item> [qty] [notes]` | `!order <item details>` | Create a new persistent order | Everyone |
-| `/orders` | `!orders` | View recent server orders in clean list | Everyone |
-| `/orderstatus <id> <status>` | `!orderstatus <id> <status>` | Update order status (Completed, etc.) | Admin / Authorized Staff Roles |
-
 ---
 
-## ⚙️ 5. Environment Variables
+## ⚙️ 4. Render Environment Variables
 
-Configure these variables in Render or your `.env` file:
+Configure these variables in Render:
 
 ```env
-# ========================================================
-# 1. Bot 1: Ongrywolf Manager (Work Logging & Channel Admin)
-# ========================================================
-BOT_MANAGER_TOKEN=your_manager_bot_token_here
-BOT_MANAGER_CLIENT_ID=your_manager_application_id_here
-# Backward-compatibility fallback:
-# If BOT_MANAGER_TOKEN is not set, DISCORD_TOKEN is used automatically.
+# ----------------------------------------------------
+# 1. Main Official Bot (Status: "Hosting on Ongrywolf")
+# ----------------------------------------------------
+BOT_TOKEN_MAIN=your_main_bot_token_here
+BOT_CLIENT_ID_MAIN=your_main_bot_client_id_here
+# Backward Compatibility: If BOT_TOKEN_MAIN is empty,
+# the platform automatically reads your existing DISCORD_TOKEN!
 DISCORD_TOKEN=
 DISCORD_CLIENT_ID=
 
-# ========================================================
-# 2. Bot 2: Ongrywolf Orders (Customer & Staff Orders)
-# ========================================================
-BOT_ORDERS_TOKEN=your_orders_bot_token_here
-BOT_ORDERS_CLIENT_ID=your_orders_application_id_here
+# ----------------------------------------------------
+# 2. Bot A (Status: "Hosting on Ongrywolf PRV")
+# ----------------------------------------------------
+BOT_TOKEN_A=your_bot_a_token_here
+BOT_CLIENT_ID_A=your_bot_a_client_id_here
 
-# ========================================================
-# General Platform Settings
-# ========================================================
+# ----------------------------------------------------
+# Platform Configuration
+# ----------------------------------------------------
 COMMAND_PREFIX=!
-DATABASE_URL=postgresql://username:password@hostname:5432/dbname?sslmode=require
-AUTHORIZED_ROLE_IDS=123456789012345678,987654321098765432
+DATABASE_URL=postgresql://user:password@host:5432/db?sslmode=require
+AUTHORIZED_ROLE_IDS=123456789012345678
 MAX_LOG_LENGTH=1000
 PORT=3000
 ```
 
 ---
 
-## 🌐 6. Deploying on Render
+## 🌐 5. Deploying on Render
 
-### Deploying the Existing Service (Backward Compatible)
-- Your existing deployment will continue running **Bot 1 (Manager)** without breaking, because `BOT_MANAGER_TOKEN` automatically falls back to your existing `DISCORD_TOKEN`.
+1. **Deploying the Main Bot**:
+   - In Render Dashboard under **Environment Variables**, set:
+     - `BOT_TOKEN_MAIN` = *(Your main bot token)*
+     - `BOT_CLIENT_ID_MAIN` = *(Your main bot application ID)*
+   *(Or keep existing `DISCORD_TOKEN` — it will automatically be used by the main bot).*
+   - Status will appear as: **`Hosting on Ongrywolf`**.
 
-### Adding Bot 2 (Orders) without Interrupting Bot 1:
-1. Create a second bot in the [Discord Developer Portal](https://discord.com/developers/applications) named **Ongrywolf Orders**.
-2. Under **Bot > Privileged Gateway Intents**, enable **Message Content Intent**.
-3. Invite the bot to your Discord server using OAuth2 URL Generator (`bot` + `applications.commands` scopes).
-4. In your **Render Dashboard** under **Environment Variables**, add:
-   - `BOT_ORDERS_TOKEN` = *(Your new orders bot token)*
-   - `BOT_ORDERS_CLIENT_ID` = *(Your new orders bot application ID)*
-5. Trigger **Manual Deploy > Deploy latest commit**.
-6. The platform starts both bots concurrently inside the same Render web service!
+2. **Deploying Bot A**:
+   - In Render Dashboard under **Environment Variables**, set:
+     - `BOT_TOKEN_A` = *(Your Bot A token)*
+     - `BOT_CLIENT_ID_A` = *(Your Bot A application ID)*
+   - Status will appear as: **`Hosting on Ongrywolf PRV`**.
 
----
-
-## ➕ 7. Adding a 3rd Bot in the Future
-
-To add another bot (e.g. `support` or `moderation`):
-1. In `src/platform/botManager.ts`, call `this.registerBot({ ... })`:
-   ```ts
-   this.registerBot({
-     id: 'support',
-     displayName: 'Ongrywolf Support',
-     tokenEnvVar: 'BOT_SUPPORT_TOKEN',
-     clientIdEnvVar: 'BOT_SUPPORT_CLIENT_ID',
-     defaultPrefix: '!',
-     defaultStatusText: 'Hosting on Ongrywolf',
-     defaultStatusType: ActivityType.Custom,
-     brandWatermark: 'Hosting on Ongrywolf',
-     defaultCommands: ['ticket', 'close'],
-   });
-   ```
-2. Assign your new commands with `targetBotIds: ['support']` in `src/commands/registry.ts`.
-3. Add `BOT_SUPPORT_TOKEN` in Render. That's it!
+3. **Running in Parallel**:
+   - Trigger a deploy on Render. Both bots will start and run concurrently inside the same Render web service!
 
 ---
 
-## 🧪 8. Automated Verification Tests
+## 🧪 6. Automated Verification Tests
 
-Run the platform test suite:
+Run the test suite locally:
 ```bash
 npm test
 ```
 
 Verifies:
-- Command segregation between `manager` and `orders`.
-- Slash command scoping and zero overlap.
-- Backward compatibility and token resolution.
-- Branding watermark footer and exact spelling (`Ongrywolf`).
+- Both bots have only the official requested commands (`log`, `listlog`, `channellog`).
+- Zero extra commands exist.
+- Main bot presence is `"Hosting on Ongrywolf"`.
+- Bot A presence is `"Hosting on Ongrywolf PRV"`.
+- Token resolution and backward compatibility with `DISCORD_TOKEN`.
+- Branding watermark footer (`Hosting on Ongrywolf`).
 - Client isolation and missing token safety.
-- Zero secret leakage in runtime telemetry.
+- Zero secret leakage in telemetry.

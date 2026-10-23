@@ -3,7 +3,7 @@ import { logger } from '../utils/logger';
 
 /**
  * Initializes the database schema.
- * Creates work_logs, guild_settings, bot_configurations, and orders tables if they do not exist.
+ * Creates work_logs, guild_settings, and bot_configurations tables if they do not exist.
  */
 export async function initializeDatabaseSchema(): Promise<void> {
   const query = `
@@ -43,25 +43,6 @@ export async function initializeDatabaseSchema(): Promise<void> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_bot_configs_enabled ON bot_configurations (desired_enabled);
-
-    CREATE TABLE IF NOT EXISTS orders (
-      id BIGSERIAL PRIMARY KEY,
-      guild_id VARCHAR(32) NOT NULL,
-      channel_id VARCHAR(32) NOT NULL,
-      user_id VARCHAR(32) NOT NULL,
-      username VARCHAR(100) NOT NULL,
-      item_details TEXT NOT NULL,
-      quantity INT NOT NULL DEFAULT 1,
-      status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
-      notes TEXT,
-      created_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'UTC') NOT NULL,
-      updated_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'UTC') NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_orders_guild_id ON orders (guild_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders (user_id);
-    CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status);
-    CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders (created_at DESC);
   `;
 
   const client = await pool.connect();

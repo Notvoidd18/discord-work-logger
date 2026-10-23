@@ -15,8 +15,8 @@ export const logCommand: Command = {
   description: 'Records a staff work log entry permanently into the database',
   usage: `${config.commandPrefix}log <description>`,
   adminOrStaffOnly: true,
-  targetBotIds: ['manager'],
-  execute: async ({ message, args, watermark }: CommandContext): Promise<void> => {
+  targetBotIds: ['main', 'bot_a'],
+  execute: async ({ message, args, botId, watermark }: CommandContext): Promise<void> => {
     // 1. Guild context verification (logs belong to a server)
     if (!message.guild) {
       await message.reply({
@@ -70,7 +70,7 @@ export const logCommand: Command = {
         description,
       });
 
-      logger.forBot('manager').info(
+      logger.forBot(botId).info(
         `Work log #${savedLog.id} successfully created by ${savedLog.username} (${savedLog.userId}) in guild ${savedLog.guildId}`
       );
 
@@ -110,7 +110,7 @@ export const logCommand: Command = {
             }
           }
         } catch (channelErr) {
-          logger.forBot('manager').warn(`Could not send log to dedicated channel ${dedicatedChannelId}:`, channelErr);
+          logger.forBot(botId).warn(`Could not send log to dedicated channel ${dedicatedChannelId}:`, channelErr);
           // Fall back to sending in the current channel below
         }
       }
@@ -118,7 +118,7 @@ export const logCommand: Command = {
       // Default: reply in the same channel
       await message.reply({ embeds: [logEmbed] });
     } catch (error) {
-      logger.forBot('manager').error('Failed to save work log to database:', error);
+      logger.forBot(botId).error('Failed to save work log to database:', error);
 
       // Graceful error notification - Never claim success on error
       await message.reply({
