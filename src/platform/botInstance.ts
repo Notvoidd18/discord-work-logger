@@ -2,6 +2,7 @@ import {
   Client,
   GatewayIntentBits,
   ActivityType,
+  Events,
 } from 'discord.js';
 import {
   BotDefinition,
@@ -22,7 +23,7 @@ export class BotInstance {
   public readonly displayName: string;
   public readonly brandWatermark: string;
   public readonly prefix: string;
-  public readonly client: Client;
+  public client: Client;
   public readonly botLogger: Logger;
 
   private definition: BotDefinition;
@@ -31,6 +32,7 @@ export class BotInstance {
   private clientId?: string;
   private startTime: Date | null = null;
   private isExplicitlyStopped: boolean = false;
+  private hasMessageContentIntent: boolean = true;
 
   constructor(def: BotDefinition) {
     this.definition = def;
@@ -41,37 +43,44 @@ export class BotInstance {
     this.botLogger = logger.forBot(def.id);
 
     // Independent Discord Client for this bot instance
-    this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-      ],
-    });
-
-    this.bindEvents();
+    this.client = this.buildClient(true);
   }
 
-  private bindEvents(): void {
-    this.client.once('ready', async () => {
+  private buildClient(withMessageContent: boolean): Client {
+    const intents = [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+    ];
+
+    if (withMessageContent) {
+      intents.push(GatewayIntentBits.MessageContent);
+    }
+
+    const client = new Client({ intents });
+    this.bindEvents(client);
+    return client;
+  }
+
+  private bindEvents(client: Client): void {
+    client.once(Events.ClientReady, async () => {
       this.startTime = new Date();
       await handleReady(this);
     });
 
-    this.client.on('messageCreate', async (message) => {
+    client.on(Events.MessageCreate, async (message) => {
       await handleMessageCreate(this, message);
     });
 
-    this.client.on('interactionCreate', async (interaction) => {
+    client.on(Events.InteractionCreate, async (interaction) => {
       await handleInteractionCreate(this, interaction);
     });
 
-    this.client.on('shardError', async (error) => {
+    client.on(Events.ShardError, async (error) => {
       this.botLogger.error('Discord gateway shard error:', error);
       await this.setObservedState('error', error.message);
     });
 
-    this.client.on('shardDisconnect', async (event, shardId) => {
+    client.on(Events.ShardDisconnect, async (event, shardId) => {
       this.botLogger.warn(`Shard ${shardId} disconnected (code: ${event.code}, reason: ${event.reason || 'none'})`);
       if (!this.isExplicitlyStopped) {
         await this.setObservedState('offline', `Disconnected (code ${event.code})`);
@@ -170,6 +179,40 @@ export class BotInstance {
       await this.client.login(this.token);
     } catch (loginError: any) {
       const errMsg = loginError?.message || String(loginError);
+
+      // Check if Discord rejected because MessageContent intent is privileged and disabled in Dev Portal
+      if (
+        this.hasMessageContentIntent &&
+        (errMsg.toLowerCase().includes('disallowed intents') || errMsg.includes('4014'))
+      ) {
+        this.botLogger.warn(
+          `Privileged 'MessageContent' intent is not enabled in Discord Developer Portal for ${this.displayName}.`
+        );
+        this.botLogger.warn(
+          `Automatically reconnecting with standard intents (Slash commands /log, /listlog, /channellog will work!).`
+        );
+        this.botLogger.warn(
+          `To enable prefix commands (!log), visit the Discord Developer Portal -> ${this.displayName} -> Bot -> Privileged Gateway Intents -> toggle 'Message Content Intent' ON.`
+        );
+
+        try {
+          this.client.destroy();
+        } catch (_) {}
+
+        this.hasMessageContentIntent = false;
+        this.client = this.buildClient(false);
+
+        try {
+          await this.client.login(this.token);
+          return;
+        } catch (fallbackError: any) {
+          const fallbackMsg = fallbackError?.message || String(fallbackError);
+          this.botLogger.error(`Failed to login with fallback intents for ${this.displayName}:`, fallbackMsg);
+          await this.setObservedState('error', fallbackMsg);
+          return;
+        }
+      }
+
       this.botLogger.error(`Failed to login to Discord for ${this.displayName}:`, errMsg);
       await this.setObservedState('error', errMsg);
       // We do not rethrow so one bot failing does not crash other running bots!
