@@ -57,7 +57,7 @@ export class BotConfigRepository {
              status_type, assigned_commands, last_started_at, last_status_update_at,
              last_error, updated_at
       FROM bot_configurations
-      WHERE bot_id = $1;
+      WHERE bot_id = $1::VARCHAR;
     `;
 
     const existing = await pool.query<BotConfigRow>(selectQuery, [def.id]);
@@ -69,7 +69,7 @@ export class BotConfigRepository {
       INSERT INTO bot_configurations (
         bot_id, display_name, desired_enabled, observed_state, status_text,
         status_type, assigned_commands, last_status_update_at
-      ) VALUES ($1, $2, true, 'offline', $3, $4, $5, NOW() AT TIME ZONE 'UTC')
+      ) VALUES ($1::VARCHAR, $2::VARCHAR, true, 'offline', $3::VARCHAR, $4::VARCHAR, $5::TEXT[], NOW() AT TIME ZONE 'UTC')
       ON CONFLICT (bot_id) DO UPDATE SET
         display_name = EXCLUDED.display_name
       RETURNING bot_id, display_name, desired_enabled, observed_state, status_text,
@@ -96,16 +96,17 @@ export class BotConfigRepository {
     state: BotObservedState,
     errorSummary: string | null = null
   ): Promise<void> {
+    const isOnline = state === 'online';
     const query = `
       UPDATE bot_configurations
-      SET observed_state = $1,
-          last_error = $2,
-          last_started_at = CASE WHEN $1 = 'online' THEN NOW() AT TIME ZONE 'UTC' ELSE last_started_at END,
+      SET observed_state = $1::VARCHAR,
+          last_error = $2::TEXT,
+          last_started_at = CASE WHEN $3::BOOLEAN THEN NOW() AT TIME ZONE 'UTC' ELSE last_started_at END,
           last_status_update_at = NOW() AT TIME ZONE 'UTC',
           updated_at = NOW() AT TIME ZONE 'UTC'
-      WHERE bot_id = $3;
+      WHERE bot_id = $4::VARCHAR;
     `;
-    await pool.query(query, [state, errorSummary, botId]);
+    await pool.query(query, [state, errorSummary, isOnline, botId]);
   }
 
   /**
@@ -114,9 +115,9 @@ export class BotConfigRepository {
   public async updateDesiredState(botId: string, enabled: boolean): Promise<void> {
     const query = `
       UPDATE bot_configurations
-      SET desired_enabled = $1,
+      SET desired_enabled = $1::BOOLEAN,
           updated_at = NOW() AT TIME ZONE 'UTC'
-      WHERE bot_id = $2;
+      WHERE bot_id = $2::VARCHAR;
     `;
     await pool.query(query, [enabled, botId]);
   }
@@ -127,10 +128,10 @@ export class BotConfigRepository {
   public async updateStatusConfig(botId: string, text: string, type: string): Promise<void> {
     const query = `
       UPDATE bot_configurations
-      SET status_text = $1,
-          status_type = $2,
+      SET status_text = $1::VARCHAR,
+          status_type = $2::VARCHAR,
           updated_at = NOW() AT TIME ZONE 'UTC'
-      WHERE bot_id = $3;
+      WHERE bot_id = $3::VARCHAR;
     `;
     await pool.query(query, [text, type, botId]);
   }
@@ -141,9 +142,9 @@ export class BotConfigRepository {
   public async updateAssignedCommands(botId: string, commands: string[]): Promise<void> {
     const query = `
       UPDATE bot_configurations
-      SET assigned_commands = $1,
+      SET assigned_commands = $1::TEXT[],
           updated_at = NOW() AT TIME ZONE 'UTC'
-      WHERE bot_id = $2;
+      WHERE bot_id = $2::VARCHAR;
     `;
     await pool.query(query, [commands, botId]);
   }
