@@ -6,13 +6,14 @@ import { slashCommands } from '../commands/slashDefinitions';
 export async function handleReady(client: Client): Promise<void> {
   logger.info(`Bot logged in successfully as ${client.user?.tag} (ID: ${client.user?.id})`);
 
-  // 1. Set presence: Playing Workin (clean online status, no custom status)
+  // 1. Set presence: "Hosting on Ongrywolf PRV"
   client.user?.setPresence({
     status: 'online',
     activities: [
       {
-        name: 'Workin ',
-        type: ActivityType.Playing,
+        name: 'Hosting on Ongrywolf PRV',
+        type: ActivityType.Custom,
+        state: 'Hosting on Ongrywolf PRV',
       },
     ],
   });

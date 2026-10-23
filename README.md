@@ -9,7 +9,7 @@ A robust, production-ready Discord Work Logging bot built with **Node.js**, **Ty
 - **Staff Work Logging (`!log <description>`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
 - **Dedicated Log Channel (`/channellog set` or `!channellog set #channel`)**: Configure a designated channel where all work logs are automatically delivered in real time.
 - **One-Click Log Listing (`/listlog` or `!listlog`)**: Displays all recorded logs in the format: `Log#0001 "context" by (username)`.
-- **Custom Activity Presence**: Displays `Playing Workin ` with clean online status.
+- **Custom Status Presence**: Displays `Hosting on Ongrywolf PRV`.
 - **Detailed Audit Trail**: Stores unique Log ID, Discord User ID, username tag, work description, UTC timestamp, Guild ID, and Channel ID.
 - **Strict Role & Administrator Authorization**: Restricts command execution to server Administrators or roles specified in `AUTHORIZED_ROLE_IDS`. Unauthorized users are securely rejected.
 - **Input Validation & Error Handling**: Validates empty input and length limits. Never claims an entry was saved if the database operation fails.
