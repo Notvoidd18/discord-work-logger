@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "ts-node tests/platform.test.ts",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "db:migrate": "ts-node src/database/migrate.ts",

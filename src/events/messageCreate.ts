@@ -1,32 +1,33 @@
-import { Message, Client } from 'discord.js';
-import { config } from '../config/env';
+import { Message } from 'discord.js';
+import { BotInstance } from '../platform/botInstance';
 import { registry } from '../commands/registry';
 import { isAuthorizedUser } from '../utils/permissions';
 import { createErrorEmbed } from '../utils/embed';
-import { logger } from '../utils/logger';
+import { config } from '../config/env';
 
-export async function handleMessageCreate(client: Client, message: Message): Promise<void> {
-  // Ignore messages from bots to prevent feedback loops
+export async function handleMessageCreate(bot: BotInstance, message: Message): Promise<void> {
+  // Ignore messages from bots to prevent loops
   if (message.author.bot) {
     return;
   }
 
   // Check prefix
-  if (!message.content.startsWith(config.commandPrefix)) {
+  if (!message.content.startsWith(bot.prefix)) {
     return;
   }
 
-  // Slice prefix and extract arguments
-  const rawContent = message.content.slice(config.commandPrefix.length).trim();
+  // Extract arguments
+  const rawContent = message.content.slice(bot.prefix.length).trim();
   if (rawContent.length === 0) {
     return;
   }
 
   const [commandName, ...args] = rawContent.split(/\s+/);
-  const command = registry.get(commandName.toLowerCase());
 
+  // Command lookup strictly restricted to this bot's assigned commands
+  const command = registry.getForBot(bot.id, commandName.toLowerCase());
   if (!command) {
-    // Unrecognized command - silently ignore or handle according to preference
+    // Unassigned or unknown command for this bot - silently ignore
     return;
   }
 
@@ -36,7 +37,7 @@ export async function handleMessageCreate(client: Client, message: Message): Pro
     const authorized = isAuthorizedUser(member, config.authorizedRoleIds);
 
     if (!authorized) {
-      logger.warn(
+      bot.botLogger.warn(
         `Unauthorized execution attempt: User ${message.author.tag} (${message.author.id}) attempted to run !${command.name} in guild ${message.guild?.id || 'DM'}`
       );
 
@@ -44,7 +45,8 @@ export async function handleMessageCreate(client: Client, message: Message): Pro
         embeds: [
           createErrorEmbed(
             'Access Denied',
-            'You do not have permission to use this command.\n\nOnly server **Administrators** or members with configured **Authorized Staff Roles** can record work logs.'
+            'You do not have permission to use this command.\n\nOnly server **Administrators** or members with configured **Authorized Staff Roles** can execute this action.',
+            bot.brandWatermark
           ),
         ],
       });
@@ -57,23 +59,26 @@ export async function handleMessageCreate(client: Client, message: Message): Pro
     await command.execute({
       message,
       args,
-      client,
+      client: bot.client,
       commandName,
+      botId: bot.id,
+      watermark: bot.brandWatermark,
     });
   } catch (error) {
-    logger.error(`Unhandled error during execution of command "${command.name}":`, error);
+    bot.botLogger.error(`Unhandled error executing command "${command.name}":`, error);
 
     try {
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Command Error',
-            'An unexpected error occurred while executing this command. Please contact a server administrator.'
+            'An unexpected error occurred while executing this command. Please contact a server administrator.',
+            bot.brandWatermark
           ),
         ],
       });
     } catch (replyError) {
-      logger.error('Failed to send error reply message:', replyError);
+      bot.botLogger.error('Failed to send error reply message:', replyError);
     }
   }
 }

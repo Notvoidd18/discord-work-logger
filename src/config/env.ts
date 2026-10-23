@@ -4,10 +4,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export interface EnvironmentConfig {
-  discordToken: string;
-  discordClientId?: string;
-  commandPrefix: string;
   databaseUrl: string;
+  commandPrefix: string;
   authorizedRoleIds: string[];
   maxLogLength: number;
   port: number;
@@ -22,15 +20,7 @@ function parseRoleIds(rawRoles?: string): string[] {
 }
 
 export function loadConfig(): EnvironmentConfig {
-  const token = process.env.DISCORD_TOKEN;
-  if (!token) {
-    throw new Error('Missing environment variable: DISCORD_TOKEN is required.');
-  }
-
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('Missing environment variable: DATABASE_URL is required.');
-  }
+  const databaseUrl = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/discord_bot';
 
   const commandPrefix = process.env.COMMAND_PREFIX || '!';
   const authorizedRoleIds = parseRoleIds(process.env.AUTHORIZED_ROLE_IDS);
@@ -38,14 +28,39 @@ export function loadConfig(): EnvironmentConfig {
   const port = parseInt(process.env.PORT || '3000', 10);
 
   return {
-    discordToken: token,
-    discordClientId: process.env.DISCORD_CLIENT_ID,
-    commandPrefix,
     databaseUrl,
+    commandPrefix,
     authorizedRoleIds,
     maxLogLength: isNaN(maxLogLength) ? 1000 : maxLogLength,
     port: isNaN(port) ? 3000 : port,
   };
+}
+
+/**
+ * Resolves a token for a given bot definition using primary and fallback environment variable names.
+ * Never prints the token itself.
+ */
+export function resolveBotToken(primaryVar: string, fallbackVar?: string): { token?: string; sourceVar?: string } {
+  if (process.env[primaryVar]?.trim()) {
+    return { token: process.env[primaryVar]!.trim(), sourceVar: primaryVar };
+  }
+  if (fallbackVar && process.env[fallbackVar]?.trim()) {
+    return { token: process.env[fallbackVar]!.trim(), sourceVar: fallbackVar };
+  }
+  return {};
+}
+
+/**
+ * Resolves an optional client ID for a bot.
+ */
+export function resolveBotClientId(primaryVar?: string, fallbackVar?: string): string | undefined {
+  if (primaryVar && process.env[primaryVar]?.trim()) {
+    return process.env[primaryVar]!.trim();
+  }
+  if (fallbackVar && process.env[fallbackVar]?.trim()) {
+    return process.env[fallbackVar]!.trim();
+  }
+  return undefined;
 }
 
 export const config = loadConfig();

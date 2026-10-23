@@ -15,14 +15,16 @@ export const logCommand: Command = {
   description: 'Records a staff work log entry permanently into the database',
   usage: `${config.commandPrefix}log <description>`,
   adminOrStaffOnly: true,
-  execute: async ({ message, args }: CommandContext): Promise<void> => {
+  targetBotIds: ['manager'],
+  execute: async ({ message, args, watermark }: CommandContext): Promise<void> => {
     // 1. Guild context verification (logs belong to a server)
     if (!message.guild) {
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Server Only',
-            'Work logs can only be recorded within a Discord server channel.'
+            'Work logs can only be recorded within a Discord server channel.',
+            watermark
           ),
         ],
       });
@@ -36,7 +38,8 @@ export const logCommand: Command = {
         embeds: [
           createErrorEmbed(
             'Missing Description',
-            `You must provide a description of the work performed.\n\n**Usage:**\n\`${config.commandPrefix}log <work description>\`\n\n**Example:**\n\`${config.commandPrefix}log Tested the website order system\``
+            `You must provide a description of the work performed.\n\n**Usage:**\n\`${config.commandPrefix}log <work description>\`\n\n**Example:**\n\`${config.commandPrefix}log Tested the website order system\``,
+            watermark
           ),
         ],
       });
@@ -49,7 +52,8 @@ export const logCommand: Command = {
         embeds: [
           createErrorEmbed(
             'Description Too Long',
-            `Your description is **${description.length}** characters, which exceeds the limit of **${config.maxLogLength}** characters.\n\nPlease shorten your log entry and try again.`
+            `Your description is **${description.length}** characters, which exceeds the limit of **${config.maxLogLength}** characters.\n\nPlease shorten your log entry and try again.`,
+            watermark
           ),
         ],
       });
@@ -66,12 +70,12 @@ export const logCommand: Command = {
         description,
       });
 
-      logger.info(
+      logger.forBot('manager').info(
         `Work log #${savedLog.id} successfully created by ${savedLog.username} (${savedLog.userId}) in guild ${savedLog.guildId}`
       );
 
       // 5. Send confirmation embed
-      const logEmbed = createWorkLogSavedEmbed(savedLog, message.author);
+      const logEmbed = createWorkLogSavedEmbed(savedLog, message.author, watermark);
 
       // Check if guild has a dedicated logging channel configured
       const dedicatedChannelId = await guildSettingsRepository.getLogChannel(message.guild.id);
@@ -92,7 +96,8 @@ export const logCommand: Command = {
                 embeds: [
                   createSuccessEmbed(
                     'Work Log Recorded',
-                    `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`
+                    `Your log \`${formatLogId(savedLog.id)}\` has been recorded and posted to <#${dedicatedChannelId}>.`,
+                    watermark
                   ),
                 ],
               });
@@ -105,7 +110,7 @@ export const logCommand: Command = {
             }
           }
         } catch (channelErr) {
-          logger.warn(`Could not send log to dedicated channel ${dedicatedChannelId}:`, channelErr);
+          logger.forBot('manager').warn(`Could not send log to dedicated channel ${dedicatedChannelId}:`, channelErr);
           // Fall back to sending in the current channel below
         }
       }
@@ -113,14 +118,15 @@ export const logCommand: Command = {
       // Default: reply in the same channel
       await message.reply({ embeds: [logEmbed] });
     } catch (error) {
-      logger.error('Failed to save work log to database:', error);
+      logger.forBot('manager').error('Failed to save work log to database:', error);
 
       // Graceful error notification - Never claim success on error
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Database Error',
-            'An unexpected error occurred while saving your work log to the database. The entry was **not** saved. Please notify an administrator or try again shortly.'
+            'An unexpected error occurred while saving your work log to the database. The entry was **not** saved. Please notify an administrator or try again shortly.',
+            watermark
           ),
         ],
       });

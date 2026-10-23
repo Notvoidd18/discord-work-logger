@@ -5,10 +5,16 @@ export enum LogLevel {
   DEBUG = 'DEBUG',
 }
 
-class Logger {
-  private format(level: LogLevel, message: string, ...args: unknown[]): string {
+export class Logger {
+  private prefix: string;
+
+  constructor(prefix: string = 'system') {
+    this.prefix = prefix;
+  }
+
+  private format(level: LogLevel, message: string): string {
     const timestamp = new Date().toISOString();
-    return `[${timestamp}] [${level}] ${message}`;
+    return `[${timestamp}] [${level}] [${this.prefix}] ${message}`;
   }
 
   info(message: string, ...args: unknown[]) {
@@ -28,6 +34,10 @@ class Logger {
       console.debug(this.format(LogLevel.DEBUG, message), ...args);
     }
   }
+
+  forBot(botId: string): Logger {
+    return new Logger(botId);
+  }
 }
 
-export const logger = new Logger();
+export const logger = new Logger('platform');

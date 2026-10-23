@@ -1,252 +1,193 @@
-# Discord Work Logging System
+# Ongrywolf Multi-Bot Platform
 
-A robust, production-ready Discord Work Logging bot built with **Node.js**, **TypeScript**, **discord.js v14**, and **PostgreSQL**. Ready for one-click deployment on **Render**.
-
----
-
-## 📌 Features
-
-- **Staff Work Logging (`!log <description>`)**: Allows authorized team members to record timestamped work reports directly into a PostgreSQL database.
-- **Dedicated Log Channel (`/channellog set` or `!channellog set #channel`)**: Configure a designated channel where all work logs are automatically delivered in real time.
-- **One-Click Log Listing (`/listlog` or `!listlog`)**: Displays all recorded logs in the format: `Log#0001 "context" by (username)`.
-- **Custom Status Presence**: Displays `Hosting on Ongrywolf PRV`.
-- **Detailed Audit Trail**: Stores unique Log ID, Discord User ID, username tag, work description, UTC timestamp, Guild ID, and Channel ID.
-- **Strict Role & Administrator Authorization**: Restricts command execution to server Administrators or roles specified in `AUTHORIZED_ROLE_IDS`. Unauthorized users are securely rejected.
-- **Input Validation & Error Handling**: Validates empty input and length limits. Never claims an entry was saved if the database operation fails.
-- **Professional Embed Responses**: Confirms logged work with rich Discord embeds detailing log ID, author, UTC timestamp, and description.
-- **Modular Architecture**: Built with repository patterns and a clean command registry, ready for future expansion (`!logs`, `!logview`, CSV export) without rewrites.
-- **Render Ready**: Includes automatic database migrations, environment variable validation, and an optional HTTP health check server for zero-downtime hosting on Render.
+A modular, enterprise-grade multi-bot Discord architecture built with **Node.js**, **TypeScript**, **discord.js v14**, and **PostgreSQL**. Ready for continuous deployment on **Render**.
 
 ---
 
-## 📁 Project Structure
+## 📌 1. Architecture Overview
+
+The **Ongrywolf Multi-Bot Platform** runs multiple independent Discord bots concurrently within a single lightweight Node.js service without code duplication:
+
+- **Bot 1: Ongrywolf Manager (`manager`)**: Handles staff work logging, audit trail tracking, and dedicated log channel configuration. Preserves existing bot behavior and permissions.
+- **Bot 2: Ongrywolf Orders (`orders`)**: Dedicated customer and staff order processing, order status transitions, and order listing.
+- **Brand Watermark**: Subtly brands public-facing embeds and activity presence with `Hosting on Ongrywolf`.
+- **Command Segregation**: Commands are assigned to specific bot IDs in a centralized registry. Bot 1 processes only manager commands, and Bot 2 processes only order commands.
+- **State Persistence**: PostgreSQL stores desired states, observed gateway states, status texts, assigned commands, error logs, and timestamps.
+- **Dashboard Ready**: Features `IBotManagementDashboardService` and a JSON status endpoint ready for future web dashboard integration.
+
+---
+
+## 📁 2. Project Structure
 
 ```text
 .
-├── .env.example                     # Sample environment variable configuration
-├── .gitignore                       # Git ignore list (node_modules, dist, .env)
-├── package.json                     # Node.js dependencies and scripts
-├── tsconfig.json                    # TypeScript compiler configuration
+├── .env.example                               # Multi-bot environment template
+├── .gitignore                                 # Git ignore rules
+├── package.json                               # Dependencies & scripts
+├── tsconfig.json                              # TypeScript configuration
 ├── sql/
-│   └── schema.sql                   # Raw SQL table and index schema
+│   └── schema.sql                             # Full PostgreSQL database schema
+├── tests/
+│   └── platform.test.ts                       # Automated multi-bot verification test suite
 └── src/
-    ├── index.ts                     # Bot bootstrap, Discord client & graceful shutdown
+    ├── index.ts                               # Platform bootstrapper & Render HTTP health server
     ├── config/
-    │   └── env.ts                   # Environment variable loader and validator
+    │   └── env.ts                             # Token resolver & environment variable loader
+    ├── platform/
+    │   ├── types.ts                           # Multi-bot domain types & interfaces
+    │   ├── botInstance.ts                     # Independent Discord Client container & lifecycle
+    │   ├── botManager.ts                      # Central coordinator managing all active bots
+    │   └── dashboardService.ts                # Management service interface for future web dashboard
     ├── database/
-    │   ├── pool.ts                  # PostgreSQL connection pool with SSL support
-    │   ├── schema.ts                # Auto-migration runner on startup
-    │   ├── migrate.ts               # Standalone migration script (`npm run db:migrate`)
+    │   ├── pool.ts                            # PostgreSQL connection pool with SSL handling
+    │   ├── schema.ts                          # Automatic database migration runner on startup
+    │   ├── migrate.ts                         # Standalone migration script (`npm run db:migrate`)
     │   └── repositories/
-    │       ├── workLogRepository.ts       # Work log database query methods
-    │       └── guildSettingsRepository.ts # Dedicated channel settings methods
+    │       ├── botConfigRepository.ts         # Persistent bot state & configuration queries
+    │       ├── workLogRepository.ts           # Staff work logs persistence
+    │       ├── guildSettingsRepository.ts     # Dedicated log channel settings
+    │       └── orderRepository.ts             # Orders system persistence
     ├── commands/
-    │   ├── types.ts                 # Command interface and execution context
-    │   ├── registry.ts              # Command loader and dispatcher
-    │   ├── log.ts                   # !log command implementation
-    │   ├── listlog.ts               # !listlog command implementation
-    │   ├── channellog.ts            # !channellog command implementation
-    │   └── slashDefinitions.ts     # Official slash command schemas
+    │   ├── types.ts                           # Command interface & CommandContext
+    │   ├── registry.ts                        # Central command registry with bot scoping
+    │   ├── slashDefinitions.ts                # Slash command definitions per bot
+    │   ├── deploy.ts                          # Slash deployment CLI (`npm run deploy:commands`)
+    │   ├── log.ts                             # Bot 1: !log command
+    │   ├── listlog.ts                         # Bot 1: !listlog command
+    │   ├── channellog.ts                      # Bot 1: !channellog command
+    │   └── orders/
+    │       ├── order.ts                       # Bot 2: !order command
+    │       ├── ordersList.ts                  # Bot 2: !orders command
+    │       └── orderStatus.ts                 # Bot 2: !orderstatus command
     ├── events/
-    │   ├── ready.ts                 # Client ready event handler & activity status
-    │   ├── messageCreate.ts         # Message dispatcher with authorization checks
-    │   └── interactionCreate.ts     # Slash command handler (/listlog, /channellog)
+    │   ├── ready.ts                           # Bot-specific ready handler & slash sync
+    │   ├── messageCreate.ts                   # Prefix command dispatcher scoped per bot
+    │   └── interactionCreate.ts               # Slash command dispatcher scoped per bot
     ├── utils/
-    │   ├── embed.ts                 # Embed builders for confirmations and errors
-    │   ├── logger.ts                # Timestamped application logger
-    │   └── permissions.ts           # Permission & role validation logic
+    │   ├── embed.ts                           # Embed builders with 'Hosting on Ongrywolf' watermark
+    │   ├── logger.ts                          # Contextual logger with per-bot prefixes
+    │   └── permissions.ts                     # Administrator & Role permission validator
     └── types/
-        └── workLog.ts               # WorkLog domain types and ID formatting helper
+        ├── workLog.ts                         # WorkLog entity and ID formatter
+        └── order.ts                           # Order entity and ID formatter
 ```
 
 ---
 
-## 🗄️ Database Schema
+## 🗄️ 3. Database Schema
 
-The database table `work_logs` is created automatically on bot startup, or manually via `npm run db:migrate`:
+The database tables are automatically verified and created on startup:
 
-```sql
-CREATE TABLE IF NOT EXISTS work_logs (
-    id BIGSERIAL PRIMARY KEY,
-    guild_id VARCHAR(32) NOT NULL,
-    channel_id VARCHAR(32) NOT NULL,
-    user_id VARCHAR(32) NOT NULL,
-    username VARCHAR(100) NOT NULL,
-    description TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'UTC') NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_work_logs_guild_id ON work_logs (guild_id);
-CREATE INDEX IF NOT EXISTS idx_work_logs_user_id ON work_logs (user_id);
-CREATE INDEX IF NOT EXISTS idx_work_logs_created_at ON work_logs (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_work_logs_guild_user ON work_logs (guild_id, user_id);
-```
+1. **`work_logs`**: Permanent record of staff work activities.
+2. **`guild_settings`**: Guild-specific settings (e.g. dedicated log channel ID).
+3. **`bot_configurations`**: Persistent bot configurations, desired states, observed states, status texts, and error summaries.
+4. **`orders`**: Customer and staff orders, status tracking (`PENDING`, `PROCESSING`, `COMPLETED`, `CANCELLED`).
 
 ---
 
-## ⚙️ Environment Variables
+## 🤖 4. Bot Command Assignments
 
-Copy `.env.example` to `.env` and fill in your values:
+### Bot 1: Ongrywolf Manager (`manager`)
+| Slash Command | Prefix Alternative | Purpose | Permissions |
+| :--- | :--- | :--- | :--- |
+| `/log <description>` | `!log <description>` | Record staff work log into PostgreSQL | Admin / Authorized Staff Roles |
+| `/listlog` | `!listlog` | View all work logs in one-click format | Admin / Authorized Staff Roles |
+| `/channellog set` | `!channellog set #channel` | Designate channel for automated logs | Admin / Authorized Staff Roles |
+| `/channellog view` | `!channellog view` | View currently configured log channel | Admin / Authorized Staff Roles |
+| `/channellog reset` | `!channellog reset` | Reset back to current channel | Admin / Authorized Staff Roles |
+
+### Bot 2: Ongrywolf Orders (`orders`)
+| Slash Command | Prefix Alternative | Purpose | Permissions |
+| :--- | :--- | :--- | :--- |
+| `/order <item> [qty] [notes]` | `!order <item details>` | Create a new persistent order | Everyone |
+| `/orders` | `!orders` | View recent server orders in clean list | Everyone |
+| `/orderstatus <id> <status>` | `!orderstatus <id> <status>` | Update order status (Completed, etc.) | Admin / Authorized Staff Roles |
+
+---
+
+## ⚙️ 5. Environment Variables
+
+Configure these variables in Render or your `.env` file:
 
 ```env
-# Discord Bot Token (from Discord Developer Portal)
-DISCORD_TOKEN=your_bot_token_here
+# ========================================================
+# 1. Bot 1: Ongrywolf Manager (Work Logging & Channel Admin)
+# ========================================================
+BOT_MANAGER_TOKEN=your_manager_bot_token_here
+BOT_MANAGER_CLIENT_ID=your_manager_application_id_here
+# Backward-compatibility fallback:
+# If BOT_MANAGER_TOKEN is not set, DISCORD_TOKEN is used automatically.
+DISCORD_TOKEN=
+DISCORD_CLIENT_ID=
 
-# Discord Client / Application ID (optional)
-DISCORD_CLIENT_ID=your_client_id_here
+# ========================================================
+# 2. Bot 2: Ongrywolf Orders (Customer & Staff Orders)
+# ========================================================
+BOT_ORDERS_TOKEN=your_orders_bot_token_here
+BOT_ORDERS_CLIENT_ID=your_orders_application_id_here
 
-# Command Prefix (default: !)
+# ========================================================
+# General Platform Settings
+# ========================================================
 COMMAND_PREFIX=!
-
-# PostgreSQL Connection String
-DATABASE_URL=postgresql://postgres:password@localhost:5432/discord_bot?sslmode=require
-
-# Comma-separated list of authorized Discord Role IDs allowed to log work
-# (Server Administrators always have permission)
+DATABASE_URL=postgresql://username:password@hostname:5432/dbname?sslmode=require
 AUTHORIZED_ROLE_IDS=123456789012345678,987654321098765432
-
-# Maximum character length for a work log description (default: 1000)
 MAX_LOG_LENGTH=1000
-
-# HTTP Port for Render Web Service health-check
 PORT=3000
 ```
 
 ---
 
-## 🚀 Setup & Local Testing
+## 🌐 6. Deploying on Render
 
-### 1. Prerequisites
-- [Node.js](https://nodejs.org/) v18.0.0 or higher
-- [PostgreSQL](https://www.postgresql.org/) database running locally or in the cloud (e.g. Neon, Supabase, Render)
-- A Discord Bot created in the [Discord Developer Portal](https://discord.com/developers/applications)
+### Deploying the Existing Service (Backward Compatible)
+- Your existing deployment will continue running **Bot 1 (Manager)** without breaking, because `BOT_MANAGER_TOKEN` automatically falls back to your existing `DISCORD_TOKEN`.
 
-### 2. Discord Developer Portal Settings
-1. Go to your application in the **Discord Developer Portal**.
-2. Under the **Bot** tab:
-   - Reset and copy your **Token**.
-   - Under **Privileged Gateway Intents**, enable **Message Content Intent** (required for the bot to read `!log <description>`).
-   - Enable **Server Members Intent** (optional, recommended).
-3. Under **OAuth2 > URL Generator**:
-   - Scopes: `bot`
-   - Bot Permissions: `Send Messages`, `Embed Links`, `Read Message History`, `View Channels`
-   - Copy the generated URL and invite the bot to your Discord server.
-
-### 3. Install Dependencies
-```bash
-npm install
-```
-
-### 4. Configure `.env`
-Create a `.env` file in the project root:
-```bash
-cp .env.example .env
-```
-Fill in your `DISCORD_TOKEN`, `DATABASE_URL`, and optionally `AUTHORIZED_ROLE_IDS`.
-
-### 5. Run Database Migration (Optional)
-The bot automatically creates the table on startup, but you can also test the database connection and schema manually:
-```bash
-npm run db:migrate
-```
-
-### 6. Start the Bot in Development Mode
-```bash
-npm run dev
-```
-
-### 7. Compile and Run in Production Mode
-```bash
-npm run build
-npm start
-```
+### Adding Bot 2 (Orders) without Interrupting Bot 1:
+1. Create a second bot in the [Discord Developer Portal](https://discord.com/developers/applications) named **Ongrywolf Orders**.
+2. Under **Bot > Privileged Gateway Intents**, enable **Message Content Intent**.
+3. Invite the bot to your Discord server using OAuth2 URL Generator (`bot` + `applications.commands` scopes).
+4. In your **Render Dashboard** under **Environment Variables**, add:
+   - `BOT_ORDERS_TOKEN` = *(Your new orders bot token)*
+   - `BOT_ORDERS_CLIENT_ID` = *(Your new orders bot application ID)*
+5. Trigger **Manual Deploy > Deploy latest commit**.
+6. The platform starts both bots concurrently inside the same Render web service!
 
 ---
 
-## 🧪 Testing the Command
+## ➕ 7. Adding a 3rd Bot in the Future
 
-1. In your Discord server, make sure you have the **Administrator** permission or one of the roles configured in `AUTHORIZED_ROLE_IDS`.
-2. Type in any channel where the bot has access:
-   ```text
-   !log Tested the website order system
+To add another bot (e.g. `support` or `moderation`):
+1. In `src/platform/botManager.ts`, call `this.registerBot({ ... })`:
+   ```ts
+   this.registerBot({
+     id: 'support',
+     displayName: 'Ongrywolf Support',
+     tokenEnvVar: 'BOT_SUPPORT_TOKEN',
+     clientIdEnvVar: 'BOT_SUPPORT_CLIENT_ID',
+     defaultPrefix: '!',
+     defaultStatusText: 'Hosting on Ongrywolf',
+     defaultStatusType: ActivityType.Custom,
+     brandWatermark: 'Hosting on Ongrywolf',
+     defaultCommands: ['ticket', 'close'],
+   });
    ```
-3. The bot will save the record into PostgreSQL and reply with:
-
-```text
-📋 WORK LOG SAVED
-Your work entry has been successfully recorded in the database.
-
-Log ID: #0001
-Created By: @Username (username#0000)
-Timestamp (UTC): Thu, 22 Oct 2026 15:45:00 GMT
-Description: Tested the website order system
-```
-
-### Validation Error Testing
-- Try sending `!log` without arguments:
-  - Expected: Error embed explaining missing description and showing command usage.
-- Try sending a description exceeding `MAX_LOG_LENGTH`:
-  - Expected: Error embed showing character count vs limit.
-- Try sending from an unauthorized account:
-  - Expected: Access denied message.
+2. Assign your new commands with `targetBotIds: ['support']` in `src/commands/registry.ts`.
+3. Add `BOT_SUPPORT_TOKEN` in Render. That's it!
 
 ---
 
-## 🌐 Deploying to Render via GitHub
+## 🧪 8. Automated Verification Tests
 
-### Step 1: Push Code to GitHub
+Run the platform test suite:
 ```bash
-git init
-git add .
-git commit -m "feat: initial work logging bot implementation"
-git branch -M main
-git remote add origin https://github.com/your-username/discord-work-logger.git
-git push -u origin main
+npm test
 ```
 
-### Step 2: Create PostgreSQL Database on Render
-1. Log in to [Render Dashboard](https://dashboard.render.com/).
-2. Click **New +** > **PostgreSQL**.
-3. Name your database (e.g. `discord-work-logger-db`).
-4. Select the Free or Starter tier and click **Create Database**.
-5. Once created, copy the **Internal Database URL** (if deploying bot on Render) or **External Database URL**.
-
-### Step 3: Deploy Bot on Render
-You can deploy as either a **Web Service** or a **Background Worker**:
-
-#### Option A: Web Service (Recommended for Free Tier)
-Render's free tier supports Web Services. The bot includes a built-in lightweight HTTP health check server on `$PORT` to keep Render happy.
-1. In Render Dashboard, click **New +** > **Web Service**.
-2. Connect your GitHub repository.
-3. Configure the settings:
-   - **Name**: `discord-work-logger`
-   - **Environment**: `Node`
-   - **Branch**: `main`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
-4. Under **Environment Variables**, add:
-   - `DISCORD_TOKEN`: *(your Discord bot token)*
-   - `DATABASE_URL`: *(your Render PostgreSQL database URL)*
-   - `COMMAND_PREFIX`: `!`
-   - `AUTHORIZED_ROLE_IDS`: *(comma-separated role IDs, e.g. 123456789012345678)*
-   - `MAX_LOG_LENGTH`: `1000`
-   - `PORT`: `10000` *(Render sets $PORT automatically)*
-   - `NODE_ENV`: `production`
-5. Click **Create Web Service**.
-
-#### Option B: Background Worker (Paid Tier)
-If using Render's Background Worker type:
-- **Build Command**: `npm install && npm run build`
-- **Start Command**: `npm start`
-- Add the same environment variables as above.
-
----
-
-## 🔮 Future Extensibility
-
-The system is designed with clean architectural boundaries:
-- **`src/database/repositories/workLogRepository.ts`**: Contains pre-built repository methods (`getLogById`, `getRecentLogs`, `getLogsByUser`) ready for:
-  - `!logs` (view recent logs with pagination)
-  - `!logview <id>` (view details of a specific log entry)
-  - `!exportlogs` (stream logs to CSV format)
-- **`src/commands/registry.ts`**: Add any new command in `src/commands/<name>.ts` and call `registry.register(newCommand)`. No need to alter core dispatch logic.
+Verifies:
+- Command segregation between `manager` and `orders`.
+- Slash command scoping and zero overlap.
+- Backward compatibility and token resolution.
+- Branding watermark footer and exact spelling (`Ongrywolf`).
+- Client isolation and missing token safety.
+- Zero secret leakage in runtime telemetry.

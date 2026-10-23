@@ -9,13 +9,15 @@ export const listLogCommand: Command = {
   usage: '!listlog',
   aliases: ['logs', 'listlogs'],
   adminOrStaffOnly: true,
-  execute: async ({ message }: CommandContext): Promise<void> => {
+  targetBotIds: ['manager'],
+  execute: async ({ message, watermark }: CommandContext): Promise<void> => {
     if (!message.guild) {
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Server Only',
-            'Work logs can only be viewed within a Discord server channel.'
+            'Work logs can only be viewed within a Discord server channel.',
+            watermark
           ),
         ],
       });
@@ -28,15 +30,16 @@ export const listLogCommand: Command = {
         workLogRepository.getTotalLogCount(message.guild.id),
       ]);
 
-      const embed = createLogListEmbed(logs, totalCount);
+      const embed = createLogListEmbed(logs, totalCount, watermark);
       await message.reply({ embeds: [embed] });
     } catch (error) {
-      logger.error('Failed to retrieve work logs:', error);
+      logger.forBot('manager').error('Failed to retrieve work logs:', error);
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Database Error',
-            'Failed to retrieve work logs from the database. Please try again later.'
+            'Failed to retrieve work logs from the database. Please try again later.',
+            watermark
           ),
         ],
       });

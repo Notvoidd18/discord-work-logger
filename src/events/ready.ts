@@ -1,48 +1,54 @@
-import { Client, ActivityType } from 'discord.js';
-import { logger } from '../utils/logger';
-import { config } from '../config/env';
-import { slashCommands } from '../commands/slashDefinitions';
+import { BotInstance } from '../platform/botInstance';
+import { getSlashCommandsForBot } from '../commands/slashDefinitions';
 
-export async function handleReady(client: Client): Promise<void> {
-  logger.info(`Bot logged in successfully as ${client.user?.tag} (ID: ${client.user?.id})`);
+export async function handleReady(bot: BotInstance): Promise<void> {
+  const { client, botLogger, displayName, id } = bot;
 
-  // 1. Set presence: "Hosting on Ongrywolf PRV"
+  botLogger.info(`${displayName} successfully logged in as ${client.user?.tag} (ID: ${client.user?.id})`);
+
+  // 1. Mark observed state as online in persistent database
+  await bot.setObservedState('online');
+
+  // 2. Set bot presence with configured status text & type
+  const statusText = bot.getStatusText();
+  const statusType = bot.getStatusType();
+
   client.user?.setPresence({
     status: 'online',
     activities: [
       {
-        name: 'Hosting on Ongrywolf PRV',
-        type: ActivityType.Custom,
-        state: 'Hosting on Ongrywolf PRV',
+        name: statusText,
+        type: statusType,
+        state: statusText,
       },
     ],
   });
 
-  // 2. Clear all guild-level commands to completely remove duplicate command entries
-  // (Duplicates happen when Discord has the same command registered both globally AND per-guild)
+  // 3. Clear all guild-level commands to prevent duplicates
   const guilds = await client.guilds.fetch();
   for (const [guildId, oauthGuild] of guilds) {
     try {
       const fullGuild = await oauthGuild.fetch();
-      const existingGuildCommands = await fullGuild.commands.fetch();
-      if (existingGuildCommands.size > 0) {
+      const existing = await fullGuild.commands.fetch();
+      if (existing.size > 0) {
         await fullGuild.commands.set([]);
-        logger.info(`Cleared ${existingGuildCommands.size} duplicate guild command(s) for "${fullGuild.name}" (${guildId})`);
+        botLogger.debug(`Cleared ${existing.size} duplicate guild command(s) for "${fullGuild.name}" (${guildId})`);
       }
     } catch (guildErr) {
-      logger.warn(`Could not clear guild commands for "${oauthGuild.name}":`, guildErr);
+      botLogger.debug(`Could not check guild commands for "${oauthGuild.name}":`, guildErr);
     }
   }
 
-  // 3. Register official slash commands GLOBALLY ONLY (single source of truth, 0 duplicates)
+  // 4. Register slash commands strictly assigned to THIS bot application
+  const slashCommands = getSlashCommandsForBot(id);
   try {
-    if (client.application) {
+    if (client.application && slashCommands.length > 0) {
       await client.application.commands.set(slashCommands);
-      logger.info(`Registered ${slashCommands.length} official slash commands globally (/log, /listlog, /channellog).`);
+      botLogger.info(`Registered ${slashCommands.length} official slash command(s) globally for ${displayName}.`);
     }
   } catch (err) {
-    logger.error('Failed to register global slash commands:', err);
+    botLogger.error(`Failed to register slash commands for ${displayName}:`, err);
   }
 
-  logger.info(`Serving ${guilds.size} guild(s). Command prefix: "${config.commandPrefix}"`);
+  botLogger.info(`Serving ${guilds.size} guild(s). Command prefix: "${bot.prefix}"`);
 }

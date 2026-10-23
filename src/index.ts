@@ -1,62 +1,50 @@
 import http from 'http';
-import { Client, GatewayIntentBits } from 'discord.js';
 import { config } from './config/env';
 import { logger } from './utils/logger';
 import { testDatabaseConnection, pool } from './database/pool';
 import { initializeDatabaseSchema } from './database/schema';
-import { handleReady } from './events/ready';
-import { handleMessageCreate } from './events/messageCreate';
-import { handleInteractionCreate } from './events/interactionCreate';
-import { slashCommands } from './commands/slashDefinitions';
+import { botManager } from './platform/botManager';
 
-// 1. Initialize Discord Client with necessary gateway intents
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-  ],
-});
+let healthCheckServer: http.Server | null = null;
 
-// 2. Register Discord Event Listeners
-client.once('ready', async () => {
-  await handleReady(client);
-});
-
-client.on('messageCreate', async (message) => {
-  await handleMessageCreate(client, message);
-});
-
-client.on('interactionCreate', async (interaction) => {
-  await handleInteractionCreate(interaction);
-});
-
-// 3. Lightweight HTTP server for Render Web Service health checks (optional)
+/**
+ * Lightweight HTTP server for Render Web Service compatibility
+ * Provides real-time health telemetry across all managed bot instances without exposing secrets.
+ */
 function startHealthCheckServer(): http.Server {
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
+    const summary = botManager.getSummary();
+
     res.end(
-      JSON.stringify({
-        status: 'ok',
-        botStatus: client.isReady() ? 'ready' : 'connecting',
-        uptime: process.uptime(),
-        timestamp: new Date().toISOString(),
-      })
+      JSON.stringify(
+        {
+          status: 'ok',
+          platform: summary.platform,
+          totalBots: summary.totalBots,
+          onlineBots: summary.onlineBots,
+          uptime: process.uptime(),
+          timestamp: new Date().toISOString(),
+          bots: summary.bots,
+        },
+        null,
+        2
+      )
     );
   });
 
   server.listen(config.port, () => {
-    logger.info(`Health check HTTP server listening on port ${config.port}`);
+    logger.info(`Multi-Bot health check server listening on port ${config.port}`);
   });
 
   return server;
 }
 
-// 4. Graceful Shutdown Handler
-let healthCheckServer: http.Server | null = null;
-
+/**
+ * Graceful shutdown sequence
+ */
 async function gracefulShutdown(signal: string) {
-  logger.info(`Received ${signal}. Starting graceful shutdown...`);
+  logger.info(`Received ${signal}. Initiating graceful multi-bot shutdown...`);
 
   if (healthCheckServer) {
     healthCheckServer.close(() => {
@@ -65,10 +53,9 @@ async function gracefulShutdown(signal: string) {
   }
 
   try {
-    client.destroy();
-    logger.info('Discord client destroyed.');
+    await botManager.stopAll();
   } catch (err) {
-    logger.error('Error destroying Discord client:', err);
+    logger.error('Error shutting down bot instances:', err);
   }
 
   try {
@@ -92,29 +79,40 @@ process.on('uncaughtException', (error) => {
   logger.error('Uncaught Exception:', error);
 });
 
-// 5. Bot Startup Sequence
-async function start() {
+/**
+ * Application Bootstrapper
+ */
+async function bootstrap() {
   try {
-    logger.info('Starting Discord Work Logger Bot...');
+    logger.info('=============================================');
+    logger.info('  Starting Ongrywolf Multi-Bot Platform      ');
+    logger.info('=============================================');
 
-    // Test database connection
+    // 1. Database connection check
     logger.info('Connecting to PostgreSQL database...');
     await testDatabaseConnection();
 
-    // Verify and apply schema migrations
-    logger.info('Verifying database schema...');
+    // 2. Schema verification & automatic migrations
+    logger.info('Verifying database schema and tables...');
     await initializeDatabaseSchema();
 
-    // Start health check server for Render compatibility
+    // 3. Initialize bot configs and mark prior states offline
+    await botManager.initAll();
+
+    // 4. Start health check server for Render
     healthCheckServer = startHealthCheckServer();
 
-    // Log in to Discord
-    logger.info('Logging into Discord Gateway...');
-    await client.login(config.discordToken);
+    // 5. Connect all enabled bots
+    await botManager.startAll();
+
+    const summary = botManager.getSummary();
+    logger.info(
+      `Platform ready. Active bots: ${summary.onlineBots}/${summary.totalBots} (${summary.configuredBots} configured with tokens).`
+    );
   } catch (error) {
     logger.error('Fatal initialization error:', error);
     process.exit(1);
   }
 }
 
-start();
+bootstrap();

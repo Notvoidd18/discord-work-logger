@@ -5,6 +5,8 @@ export interface CommandContext {
   args: string[];
   client: Client;
   commandName: string;
+  botId: string;
+  watermark: string;
 }
 
 export interface Command {
@@ -13,5 +15,6 @@ export interface Command {
   usage: string;
   aliases?: string[];
   adminOrStaffOnly?: boolean;
+  targetBotIds?: string[]; // e.g. ['manager'] or ['orders']. If omitted, can be attached to any bot
   execute(ctx: CommandContext): Promise<void>;
 }

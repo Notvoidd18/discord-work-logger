@@ -10,13 +10,15 @@ export const channelLogCommand: Command = {
   usage: `${config.commandPrefix}channellog set <#channel> | view | reset`,
   aliases: ['logchannel', 'setlogchannel'],
   adminOrStaffOnly: true,
-  execute: async ({ message, args }: CommandContext): Promise<void> => {
+  targetBotIds: ['manager'],
+  execute: async ({ message, args, watermark }: CommandContext): Promise<void> => {
     if (!message.guild) {
       await message.reply({
         embeds: [
           createErrorEmbed(
             'Server Only',
-            'This command can only be used within a server.'
+            'This command can only be used within a server.',
+            watermark
           ),
         ],
       });
@@ -33,11 +35,13 @@ export const channelLogCommand: Command = {
           currentChannelId
             ? createSuccessEmbed(
                 'Dedicated Log Channel',
-                `Work logs are currently configured to be posted in <#${currentChannelId}>.`
+                `Work logs are currently configured to be posted in <#${currentChannelId}>.`,
+                watermark
               )
             : createSuccessEmbed(
                 'Dedicated Log Channel',
-                `No dedicated log channel is configured. Work logs are posted in whichever channel the \`${config.commandPrefix}log\` command is run.\n\nUse \`${config.commandPrefix}channellog set #channel\` or \`/channellog set\` to assign one.`
+                `No dedicated log channel is configured. Work logs are posted in whichever channel the \`${config.commandPrefix}log\` command is run.\n\nUse \`${config.commandPrefix}channellog set #channel\` or \`/channellog set\` to assign one.`,
+                watermark
               ),
         ],
       });
@@ -48,7 +52,7 @@ export const channelLogCommand: Command = {
     // 2. Reset log channel
     if (subAction === 'reset' || subAction === 'remove' || subAction === 'clear') {
       await guildSettingsRepository.removeLogChannel(message.guild.id);
-      logger.info(`Dedicated log channel reset for guild ${message.guild.id}`);
+      logger.forBot('manager').info(`Dedicated log channel reset for guild ${message.guild.id}`);
       await message.delete().catch(() => null);
 
       if ('send' in message.channel) {
@@ -56,7 +60,8 @@ export const channelLogCommand: Command = {
           embeds: [
             createSuccessEmbed(
               'Channel Reset',
-              `Dedicated log channel has been removed. Work logs will now appear in the channel where \`${config.commandPrefix}log\` is typed.`
+              `Dedicated log channel has been removed. Work logs will now appear in the channel where \`${config.commandPrefix}log\` is typed.`,
+              watermark
             ),
           ],
         });
@@ -75,7 +80,8 @@ export const channelLogCommand: Command = {
           embeds: [
             createErrorEmbed(
               'Missing Channel',
-              `Please mention a text channel to set as the dedicated log channel.\n\n**Usage:**\n\`${config.commandPrefix}channellog set #channel-name\` or use slash command \`/channellog set\``
+              `Please mention a text channel to set as the dedicated log channel.\n\n**Usage:**\n\`${config.commandPrefix}channellog set #channel-name\` or use slash command \`/channellog set\``,
+              watermark
             ),
           ],
         });
@@ -88,7 +94,8 @@ export const channelLogCommand: Command = {
           embeds: [
             createErrorEmbed(
               'Invalid Channel',
-              'The specified channel does not exist or is not a text channel.'
+              'The specified channel does not exist or is not a text channel.',
+              watermark
             ),
           ],
         });
@@ -96,7 +103,7 @@ export const channelLogCommand: Command = {
       }
 
       await guildSettingsRepository.setLogChannel(message.guild.id, targetChannel.id);
-      logger.info(`Dedicated log channel for guild ${message.guild.id} set to ${targetChannel.id}`);
+      logger.forBot('manager').info(`Dedicated log channel for guild ${message.guild.id} set to ${targetChannel.id}`);
 
       // Delete the command message to keep channel clean
       await message.delete().catch(() => null);
@@ -106,7 +113,8 @@ export const channelLogCommand: Command = {
           embeds: [
             createSuccessEmbed(
               'Dedicated Log Channel Set',
-              `All future staff work logs will now be posted in <#${targetChannel.id}>!`
+              `All future staff work logs will now be posted in <#${targetChannel.id}>!`,
+              watermark
             ),
           ],
         });
@@ -120,7 +128,8 @@ export const channelLogCommand: Command = {
       embeds: [
         createErrorEmbed(
           'Invalid Subcommand',
-          `Valid subcommands are: \`set\`, \`view\`, \`reset\`.\n\n**Example:**\n\`${config.commandPrefix}channellog set #work-logs\``
+          `Valid subcommands are: \`set\`, \`view\`, \`reset\`.\n\n**Example:**\n\`${config.commandPrefix}channellog set #work-logs\``,
+          watermark
         ),
       ],
     });
