@@ -9,10 +9,10 @@ import {
   PersistentBotConfig,
   BotRuntimeStatus,
   BotObservedState,
+  SanitizedLogEntry,
 } from './types';
 import { botConfigRepository } from '../database/repositories/botConfigRepository';
 import { resolveBotToken, resolveBotClientId } from '../config/env';
-import { getSlashCommandsForBot } from '../commands/slashDefinitions';
 import { handleReady } from '../events/ready';
 import { handleMessageCreate } from '../events/messageCreate';
 import { handleInteractionCreate } from '../events/interactionCreate';
@@ -20,9 +20,9 @@ import { Logger, logger } from '../utils/logger';
 
 export class BotInstance {
   public readonly id: string;
-  public readonly displayName: string;
+  public displayName: string;
   public readonly brandWatermark: string;
-  public readonly prefix: string;
+  public prefix: string;
   public client: Client;
   public readonly botLogger: Logger;
 
@@ -33,17 +33,43 @@ export class BotInstance {
   private startTime: Date | null = null;
   private isExplicitlyStopped: boolean = false;
   private hasMessageContentIntent: boolean = true;
+  private logsBuffer: SanitizedLogEntry[] = [];
+  private static readonly MAX_LOGS = 100;
 
   constructor(def: BotDefinition) {
     this.definition = def;
     this.id = def.id;
     this.displayName = def.displayName;
-    this.brandWatermark = def.brandWatermark;
-    this.prefix = def.defaultPrefix;
+    this.brandWatermark = def.brandWatermark || 'Hosting on Ongrywolf';
+    this.prefix = def.defaultPrefix || '!';
     this.botLogger = logger.forBot(def.id);
 
     // Independent Discord Client for this bot instance
     this.client = this.buildClient(true);
+  }
+
+  private pushLog(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', rawMessage: string) {
+    // Redact tokens or secrets
+    let sanitized = rawMessage;
+    if (this.token) {
+      sanitized = sanitized.split(this.token).join('[REDACTED_TOKEN]');
+    }
+    // Redact Discord tokens pattern (base64.signature)
+    sanitized = sanitized.replace(/[MNO][a-zA-Z0-9_-]{23,25}\.[a-zA-Z0-9_-]{6}\.[a-zA-Z0-9_-]{27}/g, '[REDACTED_TOKEN]');
+
+    this.logsBuffer.unshift({
+      timestamp: new Date().toISOString(),
+      level,
+      message: sanitized,
+    });
+
+    if (this.logsBuffer.length > BotInstance.MAX_LOGS) {
+      this.logsBuffer.pop();
+    }
+  }
+
+  public getSanitizedLogs(): SanitizedLogEntry[] {
+    return [...this.logsBuffer];
   }
 
   private buildClient(withMessageContent: boolean): Client {
@@ -63,8 +89,19 @@ export class BotInstance {
 
   private bindEvents(client: Client): void {
     client.once(Events.ClientReady, async () => {
+      if (this.isExplicitlyStopped) {
+        try {
+          client.destroy();
+        } catch (_) {}
+        return;
+      }
       this.startTime = new Date();
-      await handleReady(this);
+      this.pushLog('INFO', `Client connected as ${client.user?.tag} (ID: ${client.user?.id})`);
+      try {
+        await handleReady(this);
+      } catch (err: any) {
+        this.botLogger.error(`Error in handleReady:`, err);
+      }
     });
 
     client.on(Events.MessageCreate, async (message) => {
@@ -77,11 +114,13 @@ export class BotInstance {
 
     client.on(Events.ShardError, async (error) => {
       this.botLogger.error('Discord gateway shard error:', error);
+      this.pushLog('ERROR', `Gateway shard error: ${error.message}`);
       await this.setObservedState('error', error.message);
     });
 
     client.on(Events.ShardDisconnect, async (event, shardId) => {
       this.botLogger.warn(`Shard ${shardId} disconnected (code: ${event.code}, reason: ${event.reason || 'none'})`);
+      this.pushLog('WARN', `Gateway disconnected (code ${event.code})`);
       if (!this.isExplicitlyStopped) {
         await this.setObservedState('offline', `Disconnected (code ${event.code})`);
       }
@@ -95,30 +134,60 @@ export class BotInstance {
     try {
       this.persistentConfig = await botConfigRepository.getOrCreateBotConfig(this.definition);
     } catch (dbErr) {
-      this.botLogger.error('Failed to load persistent config from database:', dbErr);
-      return false;
+      this.botLogger.error('Failed to load persistent config from database (using in-memory fallback):', dbErr);
     }
 
-    const { token, sourceVar } = resolveBotToken(
-      this.definition.tokenEnvVar,
-      this.definition.fallbackTokenEnvVar
-    );
+    if (!this.persistentConfig) {
+      this.persistentConfig = {
+        botId: this.id,
+        displayName: this.displayName,
+        desiredEnabled: true,
+        observedState: 'offline',
+        statusText: this.definition.defaultStatusText,
+        statusType: 'Custom',
+        assignedCommands: this.definition.defaultCommands,
+        lastStartedAt: null,
+        lastStatusUpdateAt: new Date(),
+        lastError: null,
+        updatedAt: new Date(),
+      };
+    }
 
-    this.token = token || null;
-    this.clientId = resolveBotClientId(
-      this.definition.clientIdEnvVar,
-      this.definition.fallbackClientIdEnvVar
-    );
+    // Explicit token takes priority (e.g. provisioned dynamically via Render 2 management API)
+    if (this.definition.explicitToken?.trim()) {
+      this.token = this.definition.explicitToken.trim();
+      this.clientId = this.definition.applicationId;
+      this.pushLog('INFO', 'Loaded credentials provisioned via Management API.');
+      return true;
+    }
 
-    if (this.token) {
-      this.botLogger.debug(`Token loaded from environment variable: ${sourceVar}`);
-    } else {
-      this.botLogger.info(
-        `Token environment variable "${this.definition.tokenEnvVar}" is not set. Bot is available but idle.`
+    if (this.definition.tokenEnvVar) {
+      const { token, sourceVar } = resolveBotToken(
+        this.definition.tokenEnvVar,
+        this.definition.fallbackTokenEnvVar
       );
+
+      this.token = token || null;
+      this.clientId = resolveBotClientId(
+        this.definition.clientIdEnvVar,
+        this.definition.fallbackClientIdEnvVar
+      ) || this.definition.applicationId;
+
+      if (this.token) {
+        this.botLogger.debug(`Token loaded from environment variable: ${sourceVar}`);
+        this.pushLog('INFO', `Token loaded from environment variable: ${sourceVar}`);
+      } else {
+        this.pushLog('WARN', `Token environment variable "${this.definition.tokenEnvVar}" is not set.`);
+      }
     }
 
     return Boolean(this.token);
+  }
+
+  public setToken(newToken: string): void {
+    this.token = newToken.trim();
+    this.definition.explicitToken = this.token;
+    this.pushLog('INFO', 'Bot token rotated successfully.');
   }
 
   public getStatusText(): string {
@@ -135,6 +204,7 @@ export class BotInstance {
   }
 
   public isDesiredEnabled(): boolean {
+    if (this.isExplicitlyStopped) return false;
     return this.persistentConfig?.desiredEnabled ?? true;
   }
 
@@ -160,41 +230,37 @@ export class BotInstance {
    */
   public async start(): Promise<void> {
     this.isExplicitlyStopped = false;
+    if (this.persistentConfig) {
+      this.persistentConfig.desiredEnabled = true;
+    }
 
     if (!this.token) {
-      this.botLogger.warn(`Cannot start bot "${this.id}": missing token (${this.definition.tokenEnvVar}).`);
-      await this.setObservedState('offline', `Missing environment variable ${this.definition.tokenEnvVar}`);
+      this.botLogger.warn(`Cannot start bot "${this.id}": missing token.`);
+      this.pushLog('WARN', 'Cannot start: token is missing.');
+      await this.setObservedState('offline', 'Token missing from configuration');
       return;
     }
 
     if (!this.isDesiredEnabled()) {
       this.botLogger.info(`Bot "${this.id}" is marked disabled in configuration. Skipping login.`);
+      this.pushLog('INFO', 'Bot is marked disabled in configuration.');
       await this.setObservedState('stopped');
       return;
     }
 
     try {
       this.botLogger.info(`Connecting ${this.displayName} to Discord gateway...`);
+      this.pushLog('INFO', `Connecting ${this.displayName} to Discord Gateway...`);
       await this.setObservedState('connecting');
       await this.client.login(this.token);
     } catch (loginError: any) {
       const errMsg = loginError?.message || String(loginError);
 
-      // Check if Discord rejected because MessageContent intent is privileged and disabled in Dev Portal
       if (
         this.hasMessageContentIntent &&
         (errMsg.toLowerCase().includes('disallowed intents') || errMsg.includes('4014'))
       ) {
-        this.botLogger.warn(
-          `Privileged 'MessageContent' intent is not enabled in Discord Developer Portal for ${this.displayName}.`
-        );
-        this.botLogger.warn(
-          `Automatically reconnecting with standard intents (Slash commands /log, /listlog, /channellog will work!).`
-        );
-        this.botLogger.warn(
-          `To enable prefix commands (!log), visit the Discord Developer Portal -> ${this.displayName} -> Bot -> Privileged Gateway Intents -> toggle 'Message Content Intent' ON.`
-        );
-
+        this.pushLog('WARN', 'Privileged MessageContent intent disallowed; reconnecting with basic intents...');
         try {
           this.client.destroy();
         } catch (_) {}
@@ -207,15 +273,15 @@ export class BotInstance {
           return;
         } catch (fallbackError: any) {
           const fallbackMsg = fallbackError?.message || String(fallbackError);
-          this.botLogger.error(`Failed to login with fallback intents for ${this.displayName}:`, fallbackMsg);
+          this.pushLog('ERROR', `Fallback login failed: ${fallbackMsg}`);
           await this.setObservedState('error', fallbackMsg);
           return;
         }
       }
 
       this.botLogger.error(`Failed to login to Discord for ${this.displayName}:`, errMsg);
+      this.pushLog('ERROR', `Login failed: ${errMsg}`);
       await this.setObservedState('error', errMsg);
-      // We do not rethrow so one bot failing does not crash other running bots!
     }
   }
 
@@ -224,15 +290,31 @@ export class BotInstance {
    */
   public async stop(): Promise<void> {
     this.isExplicitlyStopped = true;
+    if (this.persistentConfig) {
+      this.persistentConfig.desiredEnabled = false;
+    }
     this.botLogger.info(`Stopping bot "${this.id}"...`);
+    this.pushLog('INFO', `Stopping bot "${this.id}"...`);
 
     try {
       this.client.destroy();
+      this.startTime = null;
       await this.setObservedState('offline');
-      this.botLogger.info(`Bot "${this.id}" successfully stopped.`);
-    } catch (err) {
+      this.pushLog('INFO', 'Bot disconnected and stopped.');
+    } catch (err: any) {
       this.botLogger.error(`Error destroying client for "${this.id}":`, err);
+      this.pushLog('ERROR', `Error stopping: ${err.message}`);
     }
+  }
+
+  /**
+   * Restart bot safely
+   */
+  public async restart(): Promise<void> {
+    this.pushLog('INFO', 'Initiating restart sequence...');
+    await this.stop();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await this.start();
   }
 
   /**
@@ -242,13 +324,27 @@ export class BotInstance {
     const isReady = this.client.isReady();
     const uptimeSeconds = this.startTime && isReady ? Math.floor((Date.now() - this.startTime.getTime()) / 1000) : null;
 
+    let gatewayStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected';
+    if (isReady) gatewayStatus = 'connected';
+    else if (this.persistentConfig?.observedState === 'connecting') gatewayStatus = 'connecting';
+
     return {
       id: this.id,
       displayName: this.displayName,
+      applicationId: this.clientId || this.definition.applicationId,
+      botId: this.client.user?.id,
+      username: this.client.user ? `${this.client.user.username}#${this.client.user.discriminator === '0' ? '' : this.client.user.discriminator}`.replace(/#$/, '') : undefined,
+      avatarUrl: this.client.user?.displayAvatarURL() || undefined,
+      ownerAccount: this.definition.ownerAccount || 'notvoid18',
       desiredEnabled: this.isDesiredEnabled(),
       observedState: isReady ? 'online' : (this.persistentConfig?.observedState || 'offline'),
       statusText: this.getStatusText(),
+      statusType: this.persistentConfig?.statusType || 'Custom',
+      prefix: this.prefix,
       assignedCommands: this.persistentConfig?.assignedCommands || this.definition.defaultCommands,
+      enabledModules: this.definition.enabledModules || ['work_logs'],
+      version: this.definition.version || '1.0.0',
+      gatewayStatus,
       uptimeSeconds,
       pingMs: isReady ? Math.round(this.client.ws.ping) : null,
       guildCount: isReady ? this.client.guilds.cache.size : 0,
@@ -256,30 +352,59 @@ export class BotInstance {
       lastStatusUpdateAt: this.persistentConfig?.lastStatusUpdateAt?.toISOString() || new Date().toISOString(),
       lastError: this.persistentConfig?.lastError || null,
       configuredInEnv: Boolean(this.token),
+      resourceUsage: {
+        memoryMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      },
     };
   }
 
   /**
-   * Updates bot configuration (for future dashboard)
+   * Updates bot configuration
    */
   public async updateConfig(updates: {
+    displayName?: string;
     desiredEnabled?: boolean;
     statusText?: string;
     statusType?: string;
+    prefix?: string;
     assignedCommands?: string[];
+    enabledModules?: string[];
+    token?: string;
   }): Promise<void> {
+    if (updates.displayName) {
+      this.displayName = updates.displayName;
+      this.definition.displayName = updates.displayName;
+    }
+    if (updates.prefix) {
+      this.prefix = updates.prefix;
+      this.definition.defaultPrefix = updates.prefix;
+    }
+    if (updates.token) {
+      this.setToken(updates.token);
+    }
+    if (updates.enabledModules) {
+      this.definition.enabledModules = updates.enabledModules;
+    }
     if (updates.desiredEnabled !== undefined) {
-      await botConfigRepository.updateDesiredState(this.id, updates.desiredEnabled);
+      try {
+        await botConfigRepository.updateDesiredState(this.id, updates.desiredEnabled);
+      } catch (err) {
+        this.botLogger.error('DB updateDesiredState notice (using memory):', err);
+      }
       if (this.persistentConfig) this.persistentConfig.desiredEnabled = updates.desiredEnabled;
     }
     if (updates.statusText !== undefined) {
+      this.definition.defaultStatusText = updates.statusText;
       const type = updates.statusType || this.persistentConfig?.statusType || 'Custom';
-      await botConfigRepository.updateStatusConfig(this.id, updates.statusText, type);
+      try {
+        await botConfigRepository.updateStatusConfig(this.id, updates.statusText, type);
+      } catch (err) {
+        this.botLogger.error('DB updateStatusConfig notice (using memory):', err);
+      }
       if (this.persistentConfig) {
         this.persistentConfig.statusText = updates.statusText;
         this.persistentConfig.statusType = type;
       }
-      // Apply presence dynamically if online
       if (this.client.isReady()) {
         this.client.user?.setPresence({
           status: 'online',
@@ -288,8 +413,13 @@ export class BotInstance {
       }
     }
     if (updates.assignedCommands !== undefined) {
-      await botConfigRepository.updateAssignedCommands(this.id, updates.assignedCommands);
+      try {
+        await botConfigRepository.updateAssignedCommands(this.id, updates.assignedCommands);
+      } catch (err) {
+        this.botLogger.error('DB updateAssignedCommands notice (using memory):', err);
+      }
       if (this.persistentConfig) this.persistentConfig.assignedCommands = updates.assignedCommands;
     }
+    this.pushLog('INFO', 'Configuration updated.');
   }
 }

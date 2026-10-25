@@ -67,7 +67,9 @@ export class BotManager {
   public async initAll(): Promise<void> {
     logger.info('Initializing multi-bot platform configurations...');
     // Mark prior states offline to prevent stale state across restarts
-    await botConfigRepository.markAllOfflineOnStartup();
+    try {
+      await botConfigRepository.markAllOfflineOnStartup();
+    } catch (_) {}
 
     for (const [id, bot] of this.bots) {
       await bot.initConfig();
@@ -115,6 +117,45 @@ export class BotManager {
     }
     await bot.stop();
     return true;
+  }
+
+  /**
+   * Restart a single bot by ID
+   */
+  public async restartBot(id: string): Promise<boolean> {
+    const bot = this.bots.get(id);
+    if (!bot) {
+      logger.error(`Cannot restart bot "${id}": bot not registered.`);
+      return false;
+    }
+    await bot.restart();
+    return true;
+  }
+
+  /**
+   * Permanently delete a bot instance and stop its client
+   */
+  public async deleteBot(id: string): Promise<boolean> {
+    const bot = this.bots.get(id);
+    if (!bot) return false;
+
+    try {
+      await bot.stop();
+    } catch (_) {}
+
+    this.bots.delete(id);
+    this.definitions.delete(id);
+    logger.info(`Permanently deleted bot instance "${id}".`);
+    return true;
+  }
+
+  /**
+   * Get sanitized logs for a single bot
+   */
+  public getBotLogs(id: string) {
+    const bot = this.bots.get(id);
+    if (!bot) return [];
+    return bot.getSanitizedLogs();
   }
 
   /**
