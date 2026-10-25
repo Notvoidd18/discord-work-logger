@@ -9,20 +9,8 @@ export async function handleReady(bot: BotInstance): Promise<void> {
   // 1. Mark observed state as online in persistent database
   await bot.setObservedState('online');
 
-  // 2. Set bot presence with configured status text & type
-  const statusText = bot.getStatusText();
-  const statusType = bot.getStatusType();
-
-  client.user?.setPresence({
-    status: 'online',
-    activities: [
-      {
-        name: statusText,
-        type: statusType,
-        state: statusText,
-      },
-    ],
-  });
+  // 2. Set bot presence with configured status text, activity type, and online mode
+  bot.applyPresence();
 
   // 3. Clear all guild-level commands to prevent duplicates
   const guilds = await client.guilds.fetch();

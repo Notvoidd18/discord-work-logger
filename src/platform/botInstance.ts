@@ -194,13 +194,66 @@ export class BotInstance {
     return this.persistentConfig?.statusText || this.definition.defaultStatusText;
   }
 
+  public resolveActivityType(type?: string | ActivityType): ActivityType {
+    if (typeof type === 'number') return type;
+    if (!type) return ActivityType.Custom;
+    const t = String(type).toLowerCase();
+    if (t === 'playing' || t === '0') return ActivityType.Playing;
+    if (t === 'streaming' || t === '1') return ActivityType.Streaming;
+    if (t === 'listening' || t === '2') return ActivityType.Listening;
+    if (t === 'watching' || t === '3') return ActivityType.Watching;
+    if (t === 'competing' || t === '5') return ActivityType.Competing;
+    return ActivityType.Custom;
+  }
+
   public getStatusType(): ActivityType {
     if (!this.persistentConfig?.statusType) return this.definition.defaultStatusType;
-    const t = this.persistentConfig.statusType.toLowerCase();
-    if (t === 'playing' || t === '0') return ActivityType.Playing;
-    if (t === 'watching' || t === '3') return ActivityType.Watching;
-    if (t === 'listening' || t === '2') return ActivityType.Listening;
-    return ActivityType.Custom;
+    return this.resolveActivityType(this.persistentConfig.statusType);
+  }
+
+  /**
+   * Applies presence and watermark to Discord client immediately
+   */
+  public applyPresence(override?: {
+    statusMode?: 'online' | 'idle' | 'dnd' | 'invisible';
+    statusType?: string | ActivityType;
+    statusText?: string;
+    streamingUrl?: string;
+  }): void {
+    if (!this.client || !this.client.isReady() || !this.client.user) return;
+
+    const mode =
+      override?.statusMode ||
+      this.persistentConfig?.onlineMode ||
+      this.definition.defaultOnlineMode ||
+      'online';
+    const text = override?.statusText !== undefined ? override.statusText : this.getStatusText();
+    const rawType = override?.statusType || this.persistentConfig?.statusType || this.getStatusType();
+    const resolvedType = this.resolveActivityType(rawType);
+    const streamUrl = override?.streamingUrl || this.persistentConfig?.streamingUrl;
+
+    const activity: any = {
+      name: text,
+      type: resolvedType,
+      state: text,
+    };
+
+    if (resolvedType === ActivityType.Streaming && streamUrl) {
+      activity.url = streamUrl;
+    }
+
+    try {
+      this.client.user.setPresence({
+        status: mode as any,
+        activities: [activity],
+      });
+      this.pushLog(
+        'INFO',
+        `Presence broadcasted: mode=${mode}, type=${ActivityType[resolvedType] || resolvedType}, status="${text}"`
+      );
+    } catch (presenceErr: any) {
+      this.botLogger.error('Failed to set presence:', presenceErr);
+    }
   }
 
   public isDesiredEnabled(): boolean {
@@ -246,6 +299,18 @@ export class BotInstance {
       this.pushLog('INFO', 'Bot is marked disabled in configuration.');
       await this.setObservedState('stopped');
       return;
+    }
+
+    // Always rebuild fresh Discord Client upon start/restart to guarantee fresh gateway event bindings
+    try {
+      if (this.client) {
+        try {
+          this.client.destroy();
+        } catch (_) {}
+      }
+      this.client = this.buildClient(this.hasMessageContentIntent);
+    } catch (buildErr: any) {
+      this.botLogger.error(`Failed to build fresh client for ${this.displayName}:`, buildErr);
     }
 
     try {
@@ -340,6 +405,8 @@ export class BotInstance {
       observedState: isReady ? 'online' : (this.persistentConfig?.observedState || 'offline'),
       statusText: this.getStatusText(),
       statusType: this.persistentConfig?.statusType || 'Custom',
+      onlineMode: this.persistentConfig?.onlineMode || this.definition.defaultOnlineMode || 'online',
+      streamingUrl: this.persistentConfig?.streamingUrl,
       prefix: this.prefix,
       assignedCommands: this.persistentConfig?.assignedCommands || this.definition.defaultCommands,
       enabledModules: this.definition.enabledModules || ['work_logs'],
@@ -366,6 +433,8 @@ export class BotInstance {
     desiredEnabled?: boolean;
     statusText?: string;
     statusType?: string;
+    onlineMode?: 'online' | 'idle' | 'dnd' | 'invisible';
+    streamingUrl?: string;
     prefix?: string;
     assignedCommands?: string[];
     enabledModules?: string[];
@@ -393,6 +462,16 @@ export class BotInstance {
       }
       if (this.persistentConfig) this.persistentConfig.desiredEnabled = updates.desiredEnabled;
     }
+
+    if (updates.onlineMode !== undefined && this.persistentConfig) {
+      this.persistentConfig.onlineMode = updates.onlineMode;
+    }
+    if (updates.streamingUrl !== undefined && this.persistentConfig) {
+      this.persistentConfig.streamingUrl = updates.streamingUrl;
+    }
+    if (updates.statusType !== undefined && this.persistentConfig) {
+      this.persistentConfig.statusType = updates.statusType;
+    }
     if (updates.statusText !== undefined) {
       this.definition.defaultStatusText = updates.statusText;
       const type = updates.statusType || this.persistentConfig?.statusType || 'Custom';
@@ -405,13 +484,8 @@ export class BotInstance {
         this.persistentConfig.statusText = updates.statusText;
         this.persistentConfig.statusType = type;
       }
-      if (this.client.isReady()) {
-        this.client.user?.setPresence({
-          status: 'online',
-          activities: [{ name: updates.statusText, type: this.getStatusType(), state: updates.statusText }],
-        });
-      }
     }
+
     if (updates.assignedCommands !== undefined) {
       try {
         await botConfigRepository.updateAssignedCommands(this.id, updates.assignedCommands);
@@ -420,6 +494,17 @@ export class BotInstance {
       }
       if (this.persistentConfig) this.persistentConfig.assignedCommands = updates.assignedCommands;
     }
-    this.pushLog('INFO', 'Configuration updated.');
+
+    // Apply live presence to Discord immediately!
+    if (this.client && this.client.isReady()) {
+      this.applyPresence({
+        statusMode: updates.onlineMode,
+        statusType: updates.statusType,
+        statusText: updates.statusText,
+        streamingUrl: updates.streamingUrl,
+      });
+    }
+
+    this.pushLog('INFO', 'Configuration updated and applied live to Discord.');
   }
 }

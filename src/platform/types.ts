@@ -18,6 +18,7 @@ export interface BotDefinition {
   defaultPrefix: string;
   defaultStatusText: string;
   defaultStatusType: ActivityType;
+  defaultOnlineMode?: 'online' | 'idle' | 'dnd' | 'invisible';
   brandWatermark: string;
   defaultCommands: string[];
   enabledModules?: string[];
@@ -34,6 +35,8 @@ export interface PersistentBotConfig {
   observedState: BotObservedState;
   statusText: string;
   statusType: string;
+  onlineMode?: 'online' | 'idle' | 'dnd' | 'invisible';
+  streamingUrl?: string;
   assignedCommands: string[];
   lastStartedAt: Date | null;
   lastStatusUpdateAt: Date;
@@ -56,6 +59,8 @@ export interface BotRuntimeStatus {
   observedState: BotObservedState;
   statusText: string;
   statusType?: string;
+  onlineMode?: 'online' | 'idle' | 'dnd' | 'invisible';
+  streamingUrl?: string;
   prefix: string;
   assignedCommands: string[];
   enabledModules: string[];
@@ -81,6 +86,8 @@ export interface UpdateBotConfigDTO {
   desiredEnabled?: boolean;
   statusText?: string;
   statusType?: string;
+  onlineMode?: 'online' | 'idle' | 'dnd' | 'invisible';
+  streamingUrl?: string;
   prefix?: string;
   assignedCommands?: string[];
   enabledModules?: string[];
