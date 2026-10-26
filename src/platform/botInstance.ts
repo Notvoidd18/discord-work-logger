@@ -32,7 +32,7 @@ export class BotInstance {
   private clientId?: string;
   private startTime: Date | null = null;
   private isExplicitlyStopped: boolean = false;
-  private hasMessageContentIntent: boolean = true;
+  private hasMessageContentIntent: boolean = process.env.ENABLE_MESSAGE_CONTENT_INTENT === 'true';
   private logsBuffer: SanitizedLogEntry[] = [];
   private static readonly MAX_LOGS = 100;
 
@@ -44,8 +44,8 @@ export class BotInstance {
     this.prefix = def.defaultPrefix || '!';
     this.botLogger = logger.forBot(def.id);
 
-    // Independent Discord Client for this bot instance
-    this.client = this.buildClient(true);
+    // Independent Discord Client for this bot instance using safe non-privileged gateway intents
+    this.client = this.buildClient(this.hasMessageContentIntent);
   }
 
   private pushLog(level: 'INFO' | 'WARN' | 'ERROR' | 'DEBUG', rawMessage: string) {
@@ -115,7 +115,10 @@ export class BotInstance {
     client.on(Events.ShardError, async (error) => {
       this.botLogger.error('Discord gateway shard error:', error);
       this.pushLog('ERROR', `Gateway shard error: ${error.message}`);
-      await this.setObservedState('error', error.message);
+      // Do not write persistent error state if it's a disallowed intent and we are falling back to basic intents
+      if (!error.message?.toLowerCase().includes('disallowed')) {
+        await this.setObservedState('error', error.message);
+      }
     });
 
     client.on(Events.ShardDisconnect, async (event, shardId) => {
@@ -286,6 +289,9 @@ export class BotInstance {
     if (this.persistentConfig) {
       this.persistentConfig.desiredEnabled = true;
     }
+    try {
+      await botConfigRepository.updateDesiredState(this.id, true);
+    } catch (_) {}
 
     if (!this.token) {
       this.botLogger.warn(`Cannot start bot "${this.id}": missing token.`);
@@ -320,12 +326,14 @@ export class BotInstance {
       await this.client.login(this.token);
     } catch (loginError: any) {
       const errMsg = loginError?.message || String(loginError);
+      const isDisallowed =
+        errMsg.toLowerCase().includes('disallowed') ||
+        errMsg.includes('4014') ||
+        (loginError as any)?.code === 'DisallowedIntents' ||
+        (loginError as any)?.code === 4014;
 
-      if (
-        this.hasMessageContentIntent &&
-        (errMsg.toLowerCase().includes('disallowed intents') || errMsg.includes('4014'))
-      ) {
-        this.pushLog('WARN', 'Privileged MessageContent intent disallowed; reconnecting with basic intents...');
+      if (isDisallowed) {
+        this.pushLog('WARN', 'Privileged MessageContent intent disallowed by Discord developer portal. Falling back to standard gateway intents...');
         try {
           this.client.destroy();
         } catch (_) {}
@@ -335,6 +343,7 @@ export class BotInstance {
 
         try {
           await this.client.login(this.token);
+          await this.setObservedState('online', null);
           return;
         } catch (fallbackError: any) {
           const fallbackMsg = fallbackError?.message || String(fallbackError);
@@ -358,13 +367,16 @@ export class BotInstance {
     if (this.persistentConfig) {
       this.persistentConfig.desiredEnabled = false;
     }
+    try {
+      await botConfigRepository.updateDesiredState(this.id, false);
+    } catch (_) {}
     this.botLogger.info(`Stopping bot "${this.id}"...`);
     this.pushLog('INFO', `Stopping bot "${this.id}"...`);
 
     try {
       this.client.destroy();
       this.startTime = null;
-      await this.setObservedState('offline');
+      await this.setObservedState('offline', null);
       this.pushLog('INFO', 'Bot disconnected and stopped.');
     } catch (err: any) {
       this.botLogger.error(`Error destroying client for "${this.id}":`, err);

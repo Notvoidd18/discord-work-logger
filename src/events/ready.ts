@@ -6,8 +6,8 @@ export async function handleReady(bot: BotInstance): Promise<void> {
 
   botLogger.info(`${displayName} successfully logged in as ${client.user?.tag} (ID: ${client.user?.id})`);
 
-  // 1. Mark observed state as online in persistent database
-  await bot.setObservedState('online');
+  // 1. Mark observed state as online in persistent database and clear any previous errors
+  await bot.setObservedState('online', null);
 
   // 2. Set bot presence with configured status text, activity type, and online mode
   bot.applyPresence();
